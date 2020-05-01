@@ -8,7 +8,7 @@ run:
   version: null
   restore_file: null
   restore_run: null
-  checkpoint_period: 50
+  checkpoint_period: 100
   lr_find: False
 
 # Dataset
@@ -24,10 +24,10 @@ model:
   max_lr: 0.01
   wd: 0.01
   label_smoothing: 0.1
-  batch_size: 128
+  batch_size: 256
 
 # Trainer
 trainer:
   gpus: 1
-  max_steps: 100000
+  max_steps: 300000
 

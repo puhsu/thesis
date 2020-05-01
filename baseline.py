@@ -148,7 +148,7 @@ def train(hparams):
 
     checkpoints = pl.callbacks.ModelCheckpoint(
         filepath=os.path.join(path, "checkpoints", "{epoch}"),
-        period=hparams.checkpoint_period,
+        period=hparams.run.checkpoint_period,
     )
 
     hparams.trainer.max_epochs = hparams.trainer.max_steps // len(model.train_dataloader())
