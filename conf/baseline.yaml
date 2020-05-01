@@ -1,0 +1,32 @@
+hydra:
+  run:
+    dir: '.'
+
+run:
+  name: supervised_baseline
+  project: sssupervised
+  version: null
+  restore_from: null
+  checkpoint_period: 50
+  lr_find: False
+
+# Dataset
+data:
+  seed: 69
+  path: data
+  n_overlap: 4
+  n_labeled: 400
+
+# Model
+model:
+  seed: 69
+  max_lr: 0.01
+  wd: 0.01
+  label_smoothing: 0.1
+  batch_size: 128
+
+# Trainer
+trainer:
+  gpus: 1
+  max_steps: 100000
+

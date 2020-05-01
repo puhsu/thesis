@@ -1,0 +1,5 @@
+.hydra
+.vscode
+wandb
+data
+__pycache__
