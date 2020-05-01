@@ -122,7 +122,7 @@ def train(hparams):
     if hparams.run.lr_find:
         # Works from iterm with itermplot
         model = SupervisedClassifier(hparams)
-        trainer = pl.Trainer()
+        trainer = pl.Trainer(**hparams.trainer)
         lr_find = trainer.lr_find(model, max_lr=10)
         lr_find.plot(suggest=True, show=True)
 
