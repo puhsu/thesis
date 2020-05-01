@@ -6,7 +6,8 @@ run:
   name: supervised_baseline
   project: sssupervised
   version: null
-  restore_from: null
+  restore_file: null
+  restore_run: null
   checkpoint_period: 50
   lr_find: False
 

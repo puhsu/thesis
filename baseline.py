@@ -135,8 +135,12 @@ def train(hparams):
     path = logger.experiment.dir
     ckpt = None
 
-    if hparams.run.version and hparams.run.restore_from:
-        ckpt = wandb.restore(hparams.restore_from, root=os.path.join(path,"checkpoints"))
+    if hparams.run.version and hparams.run.restore_file and hparams.run.restore_run:
+        ckpt = wandb.restore(
+            name=hparams.run.restore_file,
+            run_path=hparams.run.restore_run,
+            root=os.path.join(path,"checkpoints")
+        )
         print(f"Resuming training from checkpoint {ckpt.name}")
 
     model = SupervisedClassifier(hparams)
