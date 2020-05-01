@@ -36,14 +36,14 @@ class LabelSmoothingLoss(nn.Module):
 
 
 class SupervisedClassifier(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, hparams):
         super().__init__()
-        self.cfg = cfg
+        self.hparams = hparams
 
         # Ensure same initialization
-        seed_all(self.cfg.model.seed)
+        seed_all(self.hparams.model.seed)
         self.wrn = WideResNet(4, 3, 6, k=2)
-        self.loss = LabelSmoothingLoss(6, smoothing=self.cfg.model.label_smoothing)
+        self.loss = LabelSmoothingLoss(6, smoothing=self.hparams.model.label_smoothing)
 
     def forward(self, x):
         return self.wrn(x)
@@ -53,7 +53,13 @@ class SupervisedClassifier(pl.LightningModule):
         y_hat = self.wrn(x)
         loss = self.loss(y_hat, y)
         acc = (y_hat.argmax(dim=-1) == y).float().mean()
-        log = {"train_loss": loss.item(), "train_acc": acc.item(), "lr": self.trainer}
+
+        # Extract optimizer params
+        opt = self.trainer.optimizers[0]
+        lr = opt.param_groups[0]['lr']
+        momentum = opt.param_groups[0]['betas'][0]
+
+        log = {"train_loss": loss.item(), "train_acc": acc.item(), "lr": lr, "momentum": momentum}
         return {"loss": loss, "log": log}
 
     def validation_step(self, batch, batch_n):
@@ -70,11 +76,11 @@ class SupervisedClassifier(pl.LightningModule):
         return {"val_loss": val_loss_mean, "log": log}
 
     def configure_optimizers(self):
-        optimizer = optim.Ranger(self.wrn.parameters(), lr=self.cfg.model.max_lr, weight_decay=self.cfg.model.wd)
+        optimizer = optim.RAdam(self.wrn.parameters(), lr=self.hparams.model.max_lr, weight_decay=self.hparams.model.wd)
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
-            max_lr=self.cfg.model.max_lr,
-            total_steps=self.cfg.trainer.max_steps,
+            max_lr=self.hparams.model.max_lr,
+            total_steps=self.hparams.trainer.max_steps,
         )
         return {
             "optimizer": optimizer,
@@ -87,12 +93,12 @@ class SupervisedClassifier(pl.LightningModule):
     # Data preparation below
 
     def prepare_data(self):
-        train = CIFAR10(self.cfg.data.path, True, download=True)
-        val = CIFAR10(self.cfg.data.path, False, download=True)
+        train = CIFAR10(self.hparams.data.path, True, download=True)
+        val = CIFAR10(self.hparams.data.path, False, download=True)
 
-        seed_all(self.cfg.data.seed)
-        classes, _ = get_image_classes(self.cfg.data.n_overlap, train.class_to_idx)
-        train_images, train_targets, *_ = split_cifar(train.data, train.targets, classes, [], n_labeled=self.cfg.data.n_labeled)
+        seed_all(self.hparams.data.seed)
+        classes, _ = get_image_classes(self.hparams.data.n_overlap, train.class_to_idx)
+        train_images, train_targets, *_ = split_cifar(train.data, train.targets, classes, [], n_labeled=self.hparams.data.n_labeled)
         val_images, val_targets, *_ = split_cifar(val.data, val.targets, classes, [], n_labeled=1000)
 
         train_tfm = transforms.Compose([RandAugment(), transforms.ToTensor(), transforms.Normalize(*CIFAR_STATS)])
@@ -102,52 +108,52 @@ class SupervisedClassifier(pl.LightningModule):
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
-            self.train_ds, batch_size=self.cfg.model.batch_size, shuffle=True, drop_last=True, num_workers=os.cpu_count())
+            self.train_ds, batch_size=self.hparams.model.batch_size, shuffle=True, drop_last=True, num_workers=os.cpu_count())
 
     def val_dataloader(self):
         return torch.utils.data.DataLoader(
-            self.val_ds, batch_size=self.cfg.model.batch_size*2, shuffle=False, num_workers=os.cpu_count())
+            self.val_ds, batch_size=self.hparams.model.batch_size*2, shuffle=False, num_workers=os.cpu_count())
 
 
 @hydra.main(config_path="conf/baseline.yaml", strict=False)
-def train(cfg):
-    print(cfg.pretty())
+def train(hparams):
+    print(hparams.pretty())
 
-    if cfg.run.lr_find:
+    if hparams.run.lr_find:
         # Works from iterm with itermplot
-        model = SupervisedClassifier(cfg)
+        model = SupervisedClassifier(hparams)
         trainer = pl.Trainer()
         lr_find = trainer.lr_find(model, max_lr=10)
         lr_find.plot(suggest=True, show=True)
 
     logger = pl.loggers.WandbLogger(
-        name=cfg.run.name,
-        project=cfg.run.project,
-        version=cfg.run.version,
+        name=hparams.run.name,
+        project=hparams.run.project,
+        version=hparams.run.version,
         save_dir=os.getcwd()
     )
     path = logger.experiment.dir
     ckpt = None
 
-    if cfg.run.version and cfg.run.restore_from:
-        ckpt = wandb.restore(cfg.restore_from, root=os.path.join(path,"checkpoints"))
+    if hparams.run.version and hparams.run.restore_from:
+        ckpt = wandb.restore(hparams.restore_from, root=os.path.join(path,"checkpoints"))
         print(f"Resuming training from checkpoint {ckpt.name}")
 
-    model = SupervisedClassifier(cfg)
+    model = SupervisedClassifier(hparams)
     model.prepare_data()
 
     checkpoints = pl.callbacks.ModelCheckpoint(
         filepath=os.path.join(path, "checkpoints", "{epoch}"),
-        period=cfg.checkpoint_period,
+        period=hparams.checkpoint_period,
     )
 
-    cfg.trainer.max_epochs = cfg.trainer.max_steps // len(model.train_dataloader())
+    hparams.trainer.max_epochs = hparams.trainer.max_steps // len(model.train_dataloader())
 
     trainer = pl.Trainer(
         logger=logger,
         checkpoint_callback=checkpoints,
         resume_from_checkpoint=ckpt and ckpt.name,
-        **cfg.trainer
+        **hparams.trainer
     )
 
     trainer.fit(model)

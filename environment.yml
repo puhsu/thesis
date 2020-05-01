@@ -1,0 +1,19 @@
+name: thesis
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - jupyter>=1.0.0
+  - python>=3.8.2
+  - pip>=20.0.2
+  - pytorch>=1.5.0
+  - torchvision>=0.6.0
+  - pip:
+    - albumentations>=0.4.5
+    - hydra-core>=0.11.3
+    - itermplot>=0.331
+    - pytorch-lightning>=0.7.5
+    - torch-optimizer>=0.0.1a12
+    - wandb>=0.8.34
+
+
