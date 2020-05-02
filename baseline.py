@@ -76,7 +76,7 @@ class SupervisedClassifier(pl.LightningModule):
         return {"val_loss": val_loss_mean, "log": log}
 
     def configure_optimizers(self):
-        optimizer = optim.RAdam(self.wrn.parameters(), lr=self.hparams.model.max_lr, weight_decay=self.hparams.model.wd)
+        optimizer = torch.optim.AdamW(self.wrn.parameters(), lr=self.hparams.model.max_lr, weight_decay=self.hparams.model.wd)
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
             max_lr=self.hparams.model.max_lr,

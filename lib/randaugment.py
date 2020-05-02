@@ -1,175 +1,204 @@
-__all__ = ["RandAugment"]
-
 import random
-import cv2
+
 import numpy as np
-
-from PIL import ImageOps, ImageEnhance, ImageFilter, Image
-from albumentations import Cutout
-from albumentations.augmentations.functional import shift_scale_rotate
-
-PARAMETER_MAX=10
+from PIL import Image, ImageEnhance, ImageOps
 
 
-def float_parameter(level, maxval):
-    "Helper function to scale `val` between 0 and maxval."
-    return float(level) * maxval / PARAMETER_MAX
+class Cutout:
+
+    def __init__(self, size=16) -> None:
+        self.size = size
+
+    def _create_cutout_mask(self, img_height, img_width, num_channels, size):
+        """Creates a zero mask used for cutout of shape `img_height` x `img_width`.
+        Args:
+          img_height: Height of image cutout mask will be applied to.
+          img_width: Width of image cutout mask will be applied to.
+          num_channels: Number of channels in the image.
+          size: Size of the zeros mask.
+        Returns:
+          A mask of shape `img_height` x `img_width` with all ones except for a
+          square of zeros of shape `size` x `size`. This mask is meant to be
+          elementwise multiplied with the original image. Additionally returns
+          the `upper_coord` and `lower_coord` which specify where the cutout mask
+          will be applied.
+        """
+        # assert img_height == img_width
+
+        # Sample center where cutout mask will be applied
+        height_loc = np.random.randint(low=0, high=img_height)
+        width_loc = np.random.randint(low=0, high=img_width)
+
+        size = int(size)
+        # Determine upper right and lower left corners of patch
+        upper_coord = (max(0, height_loc - size // 2), max(0, width_loc - size // 2))
+        lower_coord = (
+            min(img_height, height_loc + size // 2),
+            min(img_width, width_loc + size // 2),
+        )
+        mask_height = lower_coord[0] - upper_coord[0]
+        mask_width = lower_coord[1] - upper_coord[1]
+        assert mask_height > 0
+        assert mask_width > 0
+
+        mask = np.ones((img_height, img_width, num_channels))
+        zeros = np.zeros((mask_height, mask_width, num_channels))
+        mask[upper_coord[0]: lower_coord[0], upper_coord[1]: lower_coord[1], :] = zeros
+        return mask, upper_coord, lower_coord
+
+    def __call__(self, pil_img):
+        pil_img = pil_img.copy()
+        img_height, img_width, num_channels = (*pil_img.size, 3)
+        _, upper_coord, lower_coord = self._create_cutout_mask(
+            img_height, img_width, num_channels, self.size
+        )
+        pixels = pil_img.load()  # create the pixel map
+        for i in range(upper_coord[0], lower_coord[0]):  # for every col:
+            for j in range(upper_coord[1], lower_coord[1]):  # For every row
+                pixels[i, j] = (125, 122, 113, 0)  # set the colour accordingly
+        return pil_img
 
 
-def int_parameter(level, maxval):
-    "Helper function to scale `val` between 0 and maxval."
-    return int(level * maxval / PARAMETER_MAX)
+class SubPolicy(object):
+    def __init__(
+            self,
+            p1,
+            operation1,
+            magnitude_idx1,
+            p2,
+            operation2,
+            magnitude_idx2,
+            fillcolor=(128, 128, 128),
+    ):
+        ranges = {
+            "shearx": np.linspace(0, 0.3, 10),
+            "sheary": np.linspace(0, 0.3, 10),
+            "translatex": np.linspace(0, 150 / 331, 10),
+            "translatey": np.linspace(0, 150 / 331, 10),
+            "rotate": np.linspace(0, 30, 10),
+            "color": np.linspace(0.0, 0.9, 10),
+            "posterize": np.round(np.linspace(8, 4, 10), 0).astype(np.int),
+            "solarize": np.linspace(256, 0, 10),
+            "contrast": np.linspace(0.0, 0.9, 10),
+            "sharpness": np.linspace(0.0, 0.9, 10),
+            "brightness": np.linspace(0.0, 0.9, 10),
+            "autocontrast": [0] * 10,
+            "equalize": [0] * 10,
+            "invert": [0] * 10,
+            "cutout": np.round(np.linspace(0, 20, 10), 0).astype(np.int),
+        }
 
+        # from https://stackoverflow.com/questions/5252170/specify-image-filling-color-when-rotating-in-python-with-pil-and-setting-expand
+        def rotate_with_fill(img, magnitude):
+            rot = img.convert("RGBA").rotate(magnitude)
+            return Image.composite(
+                rot, Image.new("RGBA", rot.size, (128,) * 4), rot
+            ).convert(img.mode)
 
-# Geometric transformations
+        func = {
+            "shearx": lambda img, magnitude: img.transform(
+                img.size,
+                Image.AFFINE,
+                (1, magnitude * random.choice([-1, 1]), 0, 0, 1, 0),
+                Image.BICUBIC,
+                fillcolor=fillcolor,
+            ),
+            "sheary": lambda img, magnitude: img.transform(
+                img.size,
+                Image.AFFINE,
+                (1, 0, 0, magnitude * random.choice([-1, 1]), 1, 0),
+                Image.BICUBIC,
+                fillcolor=fillcolor,
+            ),
+            "translatex": lambda img, magnitude: img.transform(
+                img.size,
+                Image.AFFINE,
+                (1, 0, magnitude * img.size[0] * random.choice([-1, 1]), 0, 1, 0),
+                fillcolor=fillcolor,
+            ),
+            "translatey": lambda img, magnitude: img.transform(
+                img.size,
+                Image.AFFINE,
+                (1, 0, 0, 0, 1, magnitude * img.size[1] * random.choice([-1, 1])),
+                fillcolor=fillcolor,
+            ),
+            "rotate": lambda img, magnitude: rotate_with_fill(img, magnitude),
+            # "rotate": lambda img, magnitude: img.rotate(magnitude * random.choice([-1, 1])),
+            "color": lambda img, magnitude: ImageEnhance.Color(img).enhance(
+                1 + magnitude * random.choice([-1, 1])
+            ),
+            "posterize": lambda img, magnitude: ImageOps.posterize(img, magnitude),
+            "solarize": lambda img, magnitude: ImageOps.solarize(img, magnitude),
+            "contrast": lambda img, magnitude: ImageEnhance.Contrast(img).enhance(
+                1 + magnitude * random.choice([-1, 1])
+            ),
+            "sharpness": lambda img, magnitude: ImageEnhance.Sharpness(img).enhance(
+                1 + magnitude * random.choice([-1, 1])
+            ),
+            "brightness": lambda img, magnitude: ImageEnhance.Brightness(img).enhance(
+                1 + magnitude * random.choice([-1, 1])
+            ),
+            "autocontrast": lambda img, magnitude: ImageOps.autocontrast(img),
+            "equalize": lambda img, magnitude: ImageOps.equalize(img),
+            "invert": lambda img, magnitude: ImageOps.invert(img),
+            "cutout": lambda img, magnitude: Cutout(magnitude)(img),
+        }
 
-def flip_lr(img, level):
-    "Left right flip"
-    return img.transpose(Image.FLIP_LEFT_RIGHT)
+        self.p1 = p1
+        self._operation1_name = operation1
+        self.operation1 = func[operation1.lower()]
+        self.magnitude1 = ranges[operation1.lower()][magnitude_idx1]
+        self.p2 = p2
+        self._operation2_name = operation2
+        self.operation2 = func[operation2.lower()]
+        self.magnitude2 = ranges[operation2.lower()][magnitude_idx2]
 
-def flip_ud(img, level):
-    "Up down flip"
-    return img.transpose(Image.FLIP_TOP_BOTTOM)
+    def __call__(self, img):
+        if random.random() < self.p1:
+            img = self.operation1(img, self.magnitude1)
+        if random.random() < self.p2:
+            img = self.operation2(img, self.magnitude2)
+        return img
 
-def rotate(img, level):
-    "Rotate for 30 degrees max"
-    degrees = int_parameter(level, 30)
-    if random.random() < 0.5:
-        degrees = -degrees
-    return Image.fromarray(shift_scale_rotate(np.array(img), degrees, 1.0, 0, 0))
+    def __repr__(self):
+        return f"{self._operation1_name} with p:{self.p1} and magnitude:{self.magnitude1} \t" \
+            f"{self._operation2_name} with p:{self.p2} and magnitude:{self.magnitude2} \n"
 
-def scale(img, level):
-    "Scale image with level. Zoom in/out at random"
-    v = float_parameter(level, 1.0)
-    if random.random() < 0.5:
-        v = -v * 0.4
-    return Image.fromarray(shift_scale_rotate(np.array(img), 0, v + 1.0, 0, 0))
-
-def shift(img, level):
-    "Do shift with level strength in random directions"
-    s = int_parameter(level, 10)
-    do_x, do_y = random.choice([(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1,1), (1,-1)])
-    return Image.fromarray(shift_scale_rotate(np.array(img), 0, 1.0, do_x * s, do_y * s))
-
-def cutout(img, level):
-    "Cutout `level` blocks from image"
-    level = int_parameter(level, 10)
-    aug = Cutout(num_holes=level, always_apply=True)
-    return Image.fromarray(aug(image=np.array(img))["image"])
-
-def find_coeffs(pa, pb):
-    matrix = []
-    for p1, p2 in zip(pa, pb):
-        matrix.append([p1[0], p1[1], 1, 0, 0, 0, -p2[0]*p1[0], -p2[0]*p1[1]])
-        matrix.append([0, 0, 0, p1[0], p1[1], 1, -p2[1]*p1[0], -p2[1]*p1[1]])
-
-    A = np.matrix(matrix, dtype=np.float32)
-    B = np.array(pb).reshape(8)
-
-    res = np.linalg.inv(A.T * A) * A.T @ B
-    return np.r_[np.array(res).flatten(), 1].reshape(3,3)
-
-def perspective(img, level):
-    "Perspective transformation"
-    w, h = img.size
-    y, x = float_parameter(level, 8), float_parameter(level, 8)
-    if random.random() < 0.5: y = -y
-    if random.random() < 0.5: x = -x
-
-    # Compute perspective warp coordinates
-    orig =  [(0, 0), (h, 0), (h, w), (0, w)]
-    persp = [(0-y, 0-x), (h+y, 0+x), (h+y, w+x), (0-y, w-x)]
-    coefs = find_coeffs(orig, persp)
-
-    img = np.array(img).astype(np.float32) / 255.
-    persp_img = cv2.warpPerspective(
-        img,
-        coefs,
-        (h,w),
-        cv2.INTER_CUBIC,
-        borderMode=cv2.BORDER_REFLECT101
-    )
-    return Image.fromarray((persp_img * 255.).astype(np.uint8))
-
-
-# Color transforms
-def invert(img, level):
-    "Negative image"
-    return ImageOps.invert(img)
-
-def equalize(img, level):
-    "Equalize image histogram"
-    return ImageOps.equalize(img)
-
-def posterize(img, level):
-    "Control bits count used to store colors"
-    bits = 5 - int_parameter(level, 4)
-    return ImageOps.posterize(img, bits)
-
-def contrast(img, level):
-    "Change contrast with param in [0.5, 1.0, 3.0]"
-    v = float_parameter(level, 2.0)
-    if random.random() < 0.5:
-        v = -v / 4.0
-    return ImageEnhance.Contrast(img).enhance(v + 1.0)
-
-def color(img, level):
-    "Change color with param in [0, 1.0, 3.0]"
-    v = float_parameter(level, 2.0)
-    if random.random() < 0.5:
-        v = -v / 2.0
-    return ImageEnhance.Color(img).enhance(v + 1.0)
-
-def brightness(img, level):
-    "Controll brightness with param in [1/3, 2.0]"
-    v = float_parameter(level, 1.0)
-    if random.random() < 0.5:
-        v = -v / 1.5
-    return ImageEnhance.Brightness(img).enhance(v + 1.0)
-
-def sharpness(img, level):
-    "Controll sharpness with param in [0, 4]"
-    v = float_parameter(level, 3.0)
-    if random.random() < 0.5:
-        v = -v / 3.0
-    return ImageEnhance.Sharpness(img).enhance(v + 1.0)
-
-
-ALL_TRANSFORMS = [
-    flip_lr,
-    flip_ud,
-    rotate,
-    scale,
-    shift,
-    cutout,
-    perspective,
-    invert,
-    equalize,
-    posterize,
-    contrast,
-    color,
-    brightness,
-    sharpness
-]
 
 class RandAugment:
-    "RandAugment augmentation policy operating on PIL images"
-    def __init__(self):
-        ops = []
-        self.policies = []
-        for t in ALL_TRANSFORMS:
-            for m in range(1, 11):
-                ops += [(t, 0.5, m)]
+    """
+    # randaugment is adaptived from UDA tensorflow implementation:
+    # https://github.com/jizongFox/uda
+    """
 
-        for op1 in ops:
-            for op2 in ops:
-                self.policies += [[op1, op2]]
+    @classmethod
+    def get_trans_list(cls):
+        trans_list = [
+            'Invert', 'Cutout', 'Sharpness', 'AutoContrast', 'Posterize',
+            'ShearX', 'TranslateX', 'TranslateY', 'ShearY', 'Rotate',
+            'Equalize', 'Contrast', 'Color', 'Solarize', 'Brightness']
+        return trans_list
 
-    def __call__(self, x):
-        policy = random.choice(self.policies)
+    @classmethod
+    def get_rand_policies(cls):
+        op_list = []
+        for trans in cls.get_trans_list():
+            for magnitude in range(1, 10):
+                op_list += [(0.5, trans, magnitude)]
+        policies = []
+        for op_1 in op_list:
+            for op_2 in op_list:
+                policies += [[op_1, op_2]]
+        return policies
 
-        for op, p, m in policy:
-            if random.random() < p:
-                x = op(x, m)
+    def __init__(self) -> None:
+        super().__init__()
+        self._policies = self.get_rand_policies()
 
-        return x
+    def __call__(self, img):
+        randomly_chosen_policy = self._policies[random.randint(0, len(self._policies) - 1)]
+        policy = SubPolicy(*randomly_chosen_policy[0], *randomly_chosen_policy[1])
+        return policy(img)
+
+    def __repr__(self):
+        return "Random Augment Policy"
