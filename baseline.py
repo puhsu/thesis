@@ -42,7 +42,7 @@ class SupervisedClassifier(pl.LightningModule):
 
         # Ensure same initialization
         seed_all(self.hparams.model.seed)
-        self.wrn = WideResNet(4, 3, 6, k=2)
+        self.wrn = WideResNet(4, 3, 6, k=10)
         self.loss = LabelSmoothingLoss(6, smoothing=self.hparams.model.label_smoothing)
 
     def forward(self, x):
