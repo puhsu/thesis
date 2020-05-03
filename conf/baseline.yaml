@@ -23,6 +23,7 @@ model:
   seed: 69
   max_lr: 0.01
   wd: 0.01
+  width: 2
   label_smoothing: 0.1
   batch_size: 128
 
