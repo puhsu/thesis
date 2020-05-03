@@ -3,13 +3,35 @@ __all__ = ["get_image_classes", "split_cifar", "ImageDataset"]
 import torch
 import numpy as np
 import torchvision.transforms.functional as T
+
+from torch.utils.data import Dataset
 from PIL import Image
 
 from collections import Counter
 
 CIFAR_STATS = ([0.491, 0.482, 0.447], [0.247, 0.243, 0.261])
 
-def get_image_classes(overlap, class_to_idx):
+class ImageDataset(Dataset):
+    """
+    Subset of a dataset at specified indices.
+
+    Arguments:
+        dataset (Dataset): The whole Dataset
+        indices (sequence): Indices in the whole set selected for subset
+    """
+    def __init__(self, images, targets, transform):
+        self.images = images
+        self.targets = targets
+        self.transform = transform
+
+    def __getitem__(self, i):
+        return self.transform(Image.fromarray(self.images[i])), self.targets[i]
+
+    def __len__(self):
+        return len(self.images)
+
+
+def get_classes(overlap, class_to_idx):
     "Split cifar classes with overlap \in [0, 4]"
     assert 0 <= overlap <= 4
     animals = ['bird', 'cat', 'deer', 'dog', 'frog', 'horse']
@@ -28,42 +50,38 @@ def get_image_classes(overlap, class_to_idx):
     return l_classes, ul_classes
 
 
-def split_cifar(images, targets, l_classes, ul_classes, n_labeled=400, to_pil=True):
+def split_cifar(
+    train, valid, n_labeled, n_overlap,
+    labeled_tfm, unlabeled_tfm, valid_tfm
+):
     "Split cifar for semi-supervised classification"
     assert 0 < n_labeled <= 5000
     l_count = Counter()
+    l_classes, u_classes = get_classes(n_overlap, train.class_to_idx)
+    train_l, valid_l, train_u = [], [], []
 
-    l_images, l_targets = [], []
-    ul_images, ul_targets = [], []
+    for i in np.random.permutation(len(train)):
+        _, y = train[i]
+        l_count[y] += 1
 
-    for img, t in zip(images, targets):
-        l_count[t] += 1
-        if to_pil:
-            img = Image.fromarray(img)
-        if t in l_classes and l_count[t] <= n_labeled:
-            l_images.append(img)
-            l_targets.append(t)
-        elif t in ul_classes and l_count[t] > n_labeled:
-            ul_images.append(img)
-            ul_targets.append(t)
+        if y in l_classes and l_count[y] <= n_labeled:
+            train_l.append(i)
+        elif y in u_classes and l_count[y] > n_labeled:
+            train_u.append(i)
+
+    for i in np.random.permutation(len(valid)):
+        _, y = valid[i]
+        if y in l_classes:
+            valid_l.append(i)
 
     # map indices to [0, 6]
     old_to_new = {l: i for i, l in enumerate(l_classes)}
-    l_targets = [old_to_new[l] for l in l_targets]
+    train_targets_l = [old_to_new[train.targets[i]] for i in train_l]
+    train_targets_u = [None for i in train_u]
+    valid_targets_l = [old_to_new[valid.targets[i]] for i in valid_l]
 
-    return l_images, l_targets, ul_images, ul_targets
+    train_ds_l = ImageDataset(train.data[train_l], train_targets_l, labeled_tfm)
+    train_ds_u = ImageDataset(train.data[train_u], train_targets_u, unlabeled_tfm)
+    valid_ds = ImageDataset(valid.data[valid_l], valid_targets_l, valid_tfm)
 
-
-class ImageDataset(torch.utils.data.Dataset):
-    def __init__(self, images, targets=None, tfm=None):
-        self.images = images
-        self.targets = targets
-        self.transform = T.to_tensor if tfm is None else tfm
-
-    def __getitem__(self, i):
-        if self.targets is None:
-            return self.transform(self.images[i])
-        return self.transform(self.images[i]), self.targets[i]
-
-    def __len__(self):
-        return len(self.images)
+    return train_ds_l, train_ds_u, valid_ds

@@ -1,4 +1,5 @@
-__all__ = ["WideResNet"]
+__all__ = ["WideResNet", "wrn_28_2", "wrn_28_10"]
+
 # https://github.com/fastai/imagenet-fast/blob/master/imagenet_nv/models/wideresnet.py
 
 import torch
@@ -76,3 +77,10 @@ class WideResNet(nn.Module):
 
     def forward(self, x):
         return self.features(x)
+
+
+def wrn_28_2(num_classes=6):
+    return WideResNet(3, 4, num_classes, k=2)
+
+def wrn_28_10(num_classes=6):
+    return WideResNet(3, 4, num_classes, k=10)
