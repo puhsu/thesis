@@ -18,13 +18,13 @@ from lib.core import LabelSmoothingLoss, seed_all, extract_opt_stats, config
 
 class Baseline(pl.LightningModule):
     "Base class for experiments setting up optimizers and dataloaders from config"
-    def __init__(self, cfg):
+    def __init__(self, hparams):
         super().__init__()
-        self.cfg = cfg
+        self.hparams = hparams
 
-        seed_all(self.cfg.seed)
-        self.model = WideResNet(num_groups=4, N=3, num_classes=6, k=self.cfg.width)
-        self.loss = LabelSmoothingLoss(6, self.cfg.smoothing)
+        seed_all(self.hparams.seed)
+        self.model = WideResNet(num_groups=4, N=3, num_classes=6, k=self.hparams.width)
+        self.loss = LabelSmoothingLoss(6, self.hparams.smoothing)
 
     def forward(self, x):
         return self.model(x)
@@ -55,23 +55,25 @@ class Baseline(pl.LightningModule):
 
     def configure_optimizers(self):
         "We use one-cycle scheduling policy in all experiments with AdamW optimizer as most reliable"
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.cfg.lr)
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.cfg.lr, total_steps=self.cfg.trainer.max_steps)
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.hparams.lr)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.lr, total_steps=self.hparams.trainer.max_steps)
         return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
 
     def prepare_data(self):
         "Prepare supervised and unsupervised datasets from cifar"
-        train_tfm = Compose([RandAugment(), ToTensor(), Normalize(*CIFAR_STATS)])
+        n = self.hparams.randaug_n
+        m = self.hparams.randaug_m
+        train_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
         valid_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
 
-        train = CIFAR10(self.cfg.data_path, True, download=True)
-        valid = CIFAR10(self.cfg.data_path, False)
+        train = CIFAR10(self.hparams.data_path, True, download=True)
+        valid = CIFAR10(self.hparams.data_path, False)
 
-        seed_all(self.cfg.seed)
+        seed_all(self.hparams.seed)
         train_ds_l, train_ds_u, valid_ds = split_cifar(
             train, valid,
-            n_labeled=self.cfg.n_labeled,
-            n_overlap=self.cfg.n_overlap,
+            n_labeled=self.hparams.n_labeled,
+            n_overlap=self.hparams.n_overlap,
             labeled_tfm=train_tfm,
             unlabeled_tfm=train_tfm,
             valid_tfm=valid_tfm
@@ -81,39 +83,39 @@ class Baseline(pl.LightningModule):
         self.valid_ds = valid_ds
 
     def train_dataloader(self):
-        train_loader = DataLoader(self.train_ds, batch_size=self.cfg.batch_size, shuffle=True, drop_last=True, num_workers=os.cpu_count())
+        train_loader = DataLoader(self.train_ds, batch_size=self.hparams.batch_size, shuffle=True, drop_last=True, num_workers=os.cpu_count())
         # NOTE trainer uses min(max_epochs, max_steps) to stop, we don't want that
         self.trainer.max_epochs = self.trainer.max_steps // len(train_loader)
         return train_loader
 
     def val_dataloader(self):
-        return DataLoader(self.valid_ds, batch_size=self.cfg.batch_size*2, shuffle=False, drop_last=False, num_workers=os.cpu_count())
+        return DataLoader(self.valid_ds, batch_size=self.hparams.batch_size*2, shuffle=False, drop_last=False, num_workers=os.cpu_count())
 
 
 @hydra.main(config_path="conf/baseline.yaml", strict=False)
-def train(cfg):
-    print(cfg.pretty())
+def train(hparams):
+    print(hparams.pretty())
 
-    if cfg.lr_find:
+    if hparams.lr_find:
         # For plotting in iterm
         os.environ["MPLBACKEND"] = "module://itermplot"
         os.environ["ITERMPLOT"] = "rv"
 
         print("Running lr finder")
-        model = Baseline(cfg)
-        trainer = pl.Trainer(**cfg.trainer)
+        model = Baseline(hparams)
+        trainer = pl.Trainer(**hparams.trainer)
 
         lr_find = trainer.lr_find(model, max_lr=10)
         lr_find.plot(suggest=True, show=True)
         print("Suggested learning rate:", lr_find.suggestion())
         exit(0)
 
-    logger = pl.loggers.WandbLogger(name=cfg.name, project=cfg.project, version=cfg.version)
+    logger = pl.loggers.WandbLogger(name=hparams.name, project=hparams.project, version=hparams.version)
     checkpoint_path = os.path.join(logger.experiment.dir, "checkpoints", "{epoch}-{val_acc:.2f}")
-    checkpoints = pl.callbacks.ModelCheckpoint(filepath=checkpoint_path, monitor="val_acc", period=cfg.checkpoint_period)
+    checkpoints = pl.callbacks.ModelCheckpoint(filepath=checkpoint_path, monitor="val_acc", period=hparams.checkpoint_period)
 
-    model = Baseline(cfg)
-    trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **cfg.trainer)
+    model = Baseline(hparams)
+    trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **hparams.trainer)
     trainer.fit(model)
 
 if __name__ == "__main__":

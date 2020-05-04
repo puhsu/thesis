@@ -16,6 +16,8 @@ lr: 0.05
 wd: 0.0001
 smoothing: 0.1
 batch_size: 128
+randaug_n: 3
+randaug_m: 12
 
 # Other
 trainer:
