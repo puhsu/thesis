@@ -1,38 +1,63 @@
-__all__ = ["get_image_classes", "split_cifar", "ImageDataset"]
+__all__ = [
+    "split_cifar", "SupervisedDataset", "UnsupervisedDataset", "CIFAR_STATS",
+    "ConcatDataLoader"
+]
 
 import torch
 import numpy as np
-import torchvision.transforms.functional as T
 
 from torch.utils.data import Dataset
 from PIL import Image
-
 from collections import Counter
 
 CIFAR_STATS = ([0.491, 0.482, 0.447], [0.247, 0.243, 0.261])
 
-class ImageDataset(Dataset):
-    """
-    Subset of a dataset at specified indices.
 
-    Arguments:
-        dataset (Dataset): The whole Dataset
-        indices (sequence): Indices in the whole set selected for subset
-    """
+class SupervisedDataset(Dataset):
+    "Supervised dataset from numpy arrays"
     def __init__(self, images, targets, transform):
-        self.images = images
+        self.images = [Image.fromarray(img) for img in images]
         self.targets = targets
         self.transform = transform
 
     def __getitem__(self, i):
-        return self.transform(Image.fromarray(self.images[i])), self.targets[i]
+        return self.transform(self.images[i]), self.targets[i]
 
     def __len__(self):
         return len(self.images)
 
 
+class UnsupervisedDataset(Dataset):
+    "UDA specific dataset. Loads two versions of same image with 2 transforms"
+    def __init__(self, images, transform0, transform1):
+        self.images = [Image.fromarray(img) for img in images]
+        self.transform0 = transform0
+        self.transform1 = transform1
+
+    def __getitem__(self, i):
+        img = self.images[i]
+        return self.transform0(img), self.transform1(img)
+
+    def __len__(self):
+        return len(self.images)
+
+
+class ConcatDataLoader:
+    "Iterate multiple dataloaders (expects loaders with shuffle=True)"
+    def __init__(self, *loaders):
+        self.loaders = loaders
+
+    def __iter__(self):
+        for output in zip(*self.loaders):
+            yield output
+
+    def __len__(self):
+        return min(len(l) for l in self.loaders)
+
+
 def get_classes(overlap, class_to_idx):
     "Split cifar classes with overlap \in [0, 4]"
+
     assert 0 <= overlap <= 4
     animals = ['bird', 'cat', 'deer', 'dog', 'frog', 'horse']
     objects = ['airplane', 'automobile', 'ship', 'truck']
@@ -77,11 +102,10 @@ def split_cifar(
     # map indices to [0, 6]
     old_to_new = {l: i for i, l in enumerate(l_classes)}
     train_targets_l = [old_to_new[train.targets[i]] for i in train_l]
-    train_targets_u = [None for i in train_u]
     valid_targets_l = [old_to_new[valid.targets[i]] for i in valid_l]
 
-    train_ds_l = ImageDataset(train.data[train_l], train_targets_l, labeled_tfm)
-    train_ds_u = ImageDataset(train.data[train_u], train_targets_u, unlabeled_tfm)
-    valid_ds = ImageDataset(valid.data[valid_l], valid_targets_l, valid_tfm)
+    train_ds_l = SupervisedDataset(train.data[train_l], train_targets_l, labeled_tfm)
+    train_ds_u = UnsupervisedDataset(train.data[train_u], labeled_tfm, unlabeled_tfm)
+    valid_ds = SupervisedDataset(valid.data[valid_l], valid_targets_l, valid_tfm)
 
     return train_ds_l, train_ds_u, valid_ds

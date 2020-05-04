@@ -1,16 +1,16 @@
-# Experiment
 name: baseline
 project: sssupervised
-seed: 69
 version: null
-checkpoint_period: 100
+offline: false
 
-# Data
+seed: 69
+checkpoint_period: 100
+lr_find: false
+
 data_path: data
 n_labeled: 400
 n_overlap: 4
 
-# Model
 width: 2
 lr: 0.05
 wd: 0.0001
@@ -19,11 +19,6 @@ batch_size: 128
 randaug_n: 3
 randaug_m: 12
 
-# Other
 trainer:
   gpus: 1
   max_steps: 100000
-
-hydra:
-  run:
-    dir: '.'

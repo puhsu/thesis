@@ -1,0 +1,26 @@
+name: uda
+project: sssupervised
+version: null
+offline: false
+lr_find: false
+
+checkpoint_period: 100
+seed: 69
+
+data_path: data
+n_labeled: 400
+n_overlap: 4
+
+width: 2
+lr: 0.005
+wd: 0.0005
+batch_size_l: 32
+batch_size_u: 320
+u_loss_weight: 1
+randaug_n: 3
+randaug_m: 7
+
+trainer:
+  gpus: 1
+  max_steps: 400000
+  check_val_every_n_epoch: 50
