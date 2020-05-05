@@ -40,7 +40,7 @@ class UDA(pl.LightningModule):
             yw = self.forward(xw_u)
 
         ys = self.forward(xs_u)
-        yw = F.log_softmax(yw, dim=-1)
+        yw = F.softmax(yw, dim=-1)
         ys = F.log_softmax(ys, dim=-1)
 
         u_loss = F.kl_div(ys, yw, reduction="batchmean")
@@ -118,7 +118,7 @@ def train(hparams):
         model = UDA(hparams)
         trainer = pl.Trainer(**hparams.trainer)
 
-        lr_find = trainer.lr_find(model, max_lr=10)
+        lr_find = trainer.lr_find(model, min_lr=1e-5, max_lr=1)
         plot_lr_find(lr_find.results)
         exit(0)
 
