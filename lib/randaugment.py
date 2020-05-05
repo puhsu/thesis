@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 from PIL import ImageOps, ImageEnhance, ImageFilter, Image
-from albumentations import Cutout
+from albumentations import CoarseDropout
 from albumentations.augmentations.functional import shift_scale_rotate
 
 PARAMETER_MAX=10
@@ -57,7 +57,7 @@ def shift(img, level):
 def cutout(img, level):
     "Cutout `level` blocks from image"
     level = int_parameter(level, 10)
-    aug = Cutout(num_holes=level, always_apply=True)
+    aug = CoarseDropout(max_holes=level, always_apply=True)
     return Image.fromarray(aug(image=np.array(img))["image"])
 
 def find_coeffs(pa, pb):

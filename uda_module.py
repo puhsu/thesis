@@ -23,44 +23,66 @@ class UDA(pl.LightningModule):
         self.hparams = hparams
 
         seed_all(self.hparams.seed)
-        self.model = WideResNet(num_groups=4, N=3, num_classes=6, k=self.hparams.width)
-        self.xent = nn.CrossEntropyLoss()
+        self.model = WideResNet(num_groups=3, N=4, num_classes=6, k=self.hparams.width)
+        self.xent = nn.CrossEntropyLoss(reduction="none")
 
     def forward(self, x):
         return self.model(x)
 
     def training_step(self, batch, batch_n):
         "Unsupervised data augmentation loss computation"
-        (x, y), (xw_u, xs_u) = batch
+        (x, y), (x_ori, x_aug) = batch
 
-        y_hat = self.forward(x)
-        l_loss = self.xent(y_hat, y)
-
-        with torch.no_grad():
-            yw = self.forward(xw_u)
-
-        ys = self.forward(xs_u)
-        yw = F.softmax(yw, dim=-1)
-        ys = F.log_softmax(ys, dim=-1)
-
-        u_loss = F.kl_div(ys, yw.detach(), reduction="batchmean")
+        sup_logits = self.forward(x)
+        l_loss = self.xent(sup_logits, y)
+        aug_logits = self.forward(x_aug)
 
         with torch.no_grad():
-            acc = (y_hat.argmax(dim=-1) == y).float().mean()
+            ori_logits = self.forward(x_ori) / self.hparams.uda_softmax_temp
+            sup_prob = F.softmax(sup_logits, dim=-1)
+            ori_prob = F.softmax(ori_logits, dim=-1)
+            aug_prob = F.softmax(aug_logits, dim=-1)
+
+            acc = (sup_logits.argmax(dim=-1) == y).float().mean()
             lr, mom = extract_opt_stats(self.trainer)
-            u_preds = yw.argmax(dim=-1).detach()
 
-        loss = l_loss + self.hparams.u_loss_weight * u_loss
-        log = {"train_loss": loss, "train_acc": acc, "train_xent": l_loss, "train_kl": u_loss, "lr": lr, "mom": mom}
+        sup_max_prob = sup_prob.max(dim=-1).values
+        ori_max_prob = ori_prob.max(dim=-1).values
+        aug_max_prob = aug_prob.max(dim=-1).values
+
+        u_loss = F.kl_div(F.log_softmax(aug_logits, dim=-1), ori_prob, reduction="none").sum(dim=-1)
+        u_mask = (ori_max_prob > self.hparams.uda_confidence_threshold).float()
+        u_loss = (u_loss * u_mask).sum() / u_mask.sum()
+
+        if self.hparams.lr_find:
+            t = 0
+        else:
+            t = self.trainer.global_step / self.trainer.max_steps
+        tsa_conf_threshold = t * (1 - 1/6) + 1/6
+        l_mask = (sup_max_prob > tsa_conf_threshold).float()
+        l_loss = (l_loss * l_mask).sum() / l_mask.sum()
+
+        loss = l_loss + self.hparams.uda_loss_weight * u_loss
+
+        log = {
+            "train_full_loss": loss,
+            "train_acc": acc,
+            "train_xent": l_loss,
+            "train_kl": u_loss,
+            "sup_max_prob": sup_max_prob.mean(),
+            "unsup_ori_max_prob": ori_max_prob.mean(),
+            "unsup_aug_max_prob": aug_max_prob.mean(),
+            "confident_ratio": u_mask.mean(),
+            "tsa_threshold": tsa_conf_threshold,
+            "lr": lr,
+            "mom": mom,
+        }
         return {"loss": loss, "log": log}
-
-    def on_after_backward(self):
-        nn.utils.clip_grad_norm_(self.model.parameters(), 2)
 
     def validation_step(self, batch, batch_n):
         x, y = batch
         y_hat = self.forward(x)
-        loss = self.xent(y_hat, y)
+        loss = self.xent(y_hat, y).mean()
         acc = (y_hat.argmax(dim=-1) == y).float().mean()
         return {"val_xent": loss, "val_acc": acc}
 
@@ -103,7 +125,8 @@ class UDA(pl.LightningModule):
         train_loader_u = DataLoader(self.train_ds_u, batch_size=self.hparams.batch_size_u, shuffle=True, drop_last=True, num_workers=os.cpu_count())
         train_loader = ConcatDataLoader(train_loader_l, train_loader_u)
         # NOTE trainer uses min(max_epochs, max_steps) to stop, we don't want that
-        self.trainer.max_epochs = self.trainer.max_steps // len(train_loader)
+        if not self.hparams.lr_find:
+            self.trainer.max_epochs = self.trainer.max_steps // len(train_loader)
         return train_loader
 
     def val_dataloader(self):
@@ -119,7 +142,7 @@ def train(hparams):
         model = UDA(hparams)
         trainer = pl.Trainer(**hparams.trainer)
 
-        lr_find = trainer.lr_find(model, min_lr=1e-5, max_lr=1)
+        lr_find = trainer.lr_find(model, min_lr=1e-7, max_lr=10)
         plot_lr_find(lr_find.results)
         exit(0)
 
@@ -130,7 +153,6 @@ def train(hparams):
     model = UDA(hparams)
     trainer = pl.Trainer(logger=wandb_logger, checkpoint_callback=checkpoints, **hparams.trainer)
     trainer.fit(model)
-
 
 if __name__ == "__main__":
     train()

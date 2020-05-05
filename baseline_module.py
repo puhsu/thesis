@@ -22,7 +22,7 @@ class Baseline(pl.LightningModule):
         self.hparams = hparams
 
         seed_all(self.hparams.seed)
-        self.model = WideResNet(num_groups=4, N=3, num_classes=6, k=self.hparams.width)
+        self.model = WideResNet(num_groups=3, N=4, num_classes=6, k=self.hparams.width)
         self.loss = LabelSmoothingLoss(6, self.hparams.smoothing)
 
     def forward(self, x):

@@ -68,8 +68,8 @@ def plot_lr_find(results):
 
     plt.figure(figsize=(10,5))
     plt.semilogx(lr, loss)
-    plt.scatter(lr[min_idx], loss[min_idx], label=f"lr={lr[min_loss]/10:.4f}", c="red", zorder=10)
-    plt.scatter(lr[max_slope], loss[max_slope], label=f"lr={lr[max_slope]:.4f}", c="green", zorder=10)
+    plt.scatter(lr[min_idx], loss[min_idx], label=f"lr={lr[min_loss]/10:.6f}", c="red", zorder=10)
+    plt.scatter(lr[max_slope], loss[max_slope], label=f"lr={lr[max_slope]:.6f}", c="green", zorder=10)
     plt.legend()
     plt.show()
 

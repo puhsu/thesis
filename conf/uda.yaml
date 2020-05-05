@@ -12,16 +12,15 @@ n_labeled: 400
 n_overlap: 4
 
 width: 2
-lr: 0.01
+lr: 0.02
 wd: 0.0005
-batch_size_l: 32
-batch_size_u: 320
-u_loss_weight: 1
-randaug_n: 3
-randaug_m: 7
+batch_size_l: 64
+batch_size_u: 448
+uda_loss_weight: 1
+uda_softmax_temp: 0.4
+uda_confidence_threshold: 0.8
 
 trainer:
   gpus: 1
   max_steps: 100000
   check_val_every_n_epoch: 10
-  gradient_clip_val: 2
