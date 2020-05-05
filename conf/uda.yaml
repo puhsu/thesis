@@ -12,7 +12,7 @@ n_labeled: 400
 n_overlap: 4
 
 width: 2
-lr: 0.005
+lr: 0.01
 wd: 0.0005
 batch_size_l: 32
 batch_size_u: 320
@@ -22,5 +22,6 @@ randaug_m: 7
 
 trainer:
   gpus: 1
-  max_steps: 400000
-  check_val_every_n_epoch: 50
+  max_steps: 100000
+  check_val_every_n_epoch: 10
+  gradient_clip_val: 2

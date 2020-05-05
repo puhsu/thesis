@@ -140,8 +140,10 @@ def sharpness(img, level):
 
 class RandAugment:
     "RandAugment augmentation policy operating on PIL images"
-    def __init__(self, n, m):
+    def __init__(self, n=3, m=9, uda=False):
         self.n, self.m = n, m
+        self.uda = uda
+
         self.transforms = [
             identity,
             flip_lr,
@@ -160,9 +162,25 @@ class RandAugment:
             sharpness,
         ]
 
-    def __call__(self, x):
-        transforms = np.random.choice(self.transforms, self.n)
+        ops = []
+        self.policies = []
+        for t in self.transforms:
+            for m in range(1, 11):
+                ops += [(t, 0.5, m)]
 
+        for op1 in ops:
+            for op2 in ops:
+                self.policies += [[op1, op2]]
+
+    def __call__(self, x):
+        if self.uda:
+            policy = random.choice(self.policies)
+            for op, p, m in policy:
+                if random.random() < p:
+                    x = op(x, m)
+            return x
+
+        transforms = np.random.choice(self.transforms, self.n)
         for op in transforms:
             x = op(x, self.m)
 

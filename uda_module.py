@@ -43,7 +43,7 @@ class UDA(pl.LightningModule):
         yw = F.softmax(yw, dim=-1)
         ys = F.log_softmax(ys, dim=-1)
 
-        u_loss = F.kl_div(ys, yw, reduction="batchmean")
+        u_loss = F.kl_div(ys, yw.detach(), reduction="batchmean")
 
         with torch.no_grad():
             acc = (y_hat.argmax(dim=-1) == y).float().mean()
@@ -53,6 +53,9 @@ class UDA(pl.LightningModule):
         loss = l_loss + self.hparams.u_loss_weight * u_loss
         log = {"train_loss": loss, "train_acc": acc, "train_xent": l_loss, "train_kl": u_loss, "lr": lr, "mom": mom}
         return {"loss": loss, "log": log}
+
+    def on_after_backward(self):
+        nn.utils.clip_grad_norm_(self.model.parameters(), 2)
 
     def validation_step(self, batch, batch_n):
         x, y = batch
@@ -74,9 +77,7 @@ class UDA(pl.LightningModule):
 
     def prepare_data(self):
         "Prepare supervised and unsupervised datasets from cifar"
-        n = self.hparams.randaug_n
-        m = self.hparams.randaug_m
-        strong_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
+        strong_tfm = Compose([RandAugment(uda=True), ToTensor(), Normalize(*CIFAR_STATS)])
         weak_tfm = Compose([RandomCrop(32, 4, padding_mode="reflect"), RandomHorizontalFlip(), ToTensor(), Normalize(*CIFAR_STATS)])
         valid_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
 
