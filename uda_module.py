@@ -118,7 +118,7 @@ def train(hparams):
         model = UDA(hparams)
         trainer = pl.Trainer(**hparams.trainer)
 
-        lr_find = trainer.lr_find(model, max_lr=10, num_training=20)
+        lr_find = trainer.lr_find(model, max_lr=10)
         plot_lr_find(lr_find.results)
         exit(0)
 
