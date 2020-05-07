@@ -54,13 +54,17 @@ class UDA(pl.LightningModule):
         u_mask = (ori_max_prob > self.hparams.uda_confidence_threshold).float()
         u_loss = (u_loss * u_mask).sum() / u_mask.sum()
 
-        if self.hparams.lr_find:
-            t = 0
+        if self.hparams.uda_tsa:
+            # anneal supervised loss
+            if self.hparams.lr_find:
+                t = 0
+            else:
+                t = self.trainer.global_step / self.trainer.max_steps
+            tsa_conf_threshold = t * (1 - 1/6) + 1/6
+            l_mask = (sup_max_prob > tsa_conf_threshold).float()
+            l_loss = (l_loss * l_mask).sum() / l_mask.sum()
         else:
-            t = self.trainer.global_step / self.trainer.max_steps
-        tsa_conf_threshold = t * (1 - 1/6) + 1/6
-        l_mask = (sup_max_prob > tsa_conf_threshold).float()
-        l_loss = (l_loss * l_mask).sum() / l_mask.sum()
+            l_loss = l_loss.mean()
 
         loss = l_loss + self.hparams.uda_loss_weight * u_loss
 
@@ -73,7 +77,6 @@ class UDA(pl.LightningModule):
             "unsup_ori_max_prob": ori_max_prob.mean(),
             "unsup_aug_max_prob": aug_max_prob.mean(),
             "confident_ratio": u_mask.mean(),
-            "tsa_threshold": tsa_conf_threshold,
             "lr": lr,
             "mom": mom,
         }
@@ -99,7 +102,10 @@ class UDA(pl.LightningModule):
 
     def prepare_data(self):
         "Prepare supervised and unsupervised datasets from cifar"
-        strong_tfm = Compose([RandAugment(uda=True), ToTensor(), Normalize(*CIFAR_STATS)])
+        n = self.hparams.randaug_n
+        m = self.hparams.randaug_m
+
+        strong_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
         weak_tfm = Compose([RandomCrop(32, 4, padding_mode="reflect"), RandomHorizontalFlip(), ToTensor(), Normalize(*CIFAR_STATS)])
         valid_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
 

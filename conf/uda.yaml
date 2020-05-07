@@ -4,7 +4,7 @@ version: null
 offline: false
 lr_find: false
 
-checkpoint_period: 100
+checkpoint_period: 20
 seed: 69
 
 data_path: data
@@ -16,6 +16,9 @@ lr: 0.02
 wd: 0.0005
 batch_size_l: 64
 batch_size_u: 448
+randaug_n: 3
+randaug_m: 9
+uda_tsa: False
 uda_loss_weight: 1
 uda_softmax_temp: 0.4
 uda_confidence_threshold: 0.8
