@@ -7,11 +7,11 @@ import torchvision
 
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
-from torchvision.transforms import Compose, Normalize, ToTensor
+from torchvision.transforms import Compose, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomRotation
 
 from lib.wrn import WideResNet
 from lib.randaugment import RandAugment
-from lib.data import split_cifar, CIFAR_STATS
+from lib.data import Cifar, QuickDraw
 from lib.core import *
 
 
@@ -22,7 +22,10 @@ class Baseline(pl.LightningModule):
         self.hparams = hparams
 
         seed_all(self.hparams.seed)
-        self.model = WideResNet(num_groups=3, N=4, num_classes=6, k=self.hparams.width)
+        inp_nf = 3 if self.hparams.dataset == "cifar" else 1
+        n_classes = 6 if self.hparams.dataset == "cifar" else 10
+
+        self.model = WideResNet(num_groups=3, N=4, num_classes=n_classes, k=self.hparams.width, inp_nf=inp_nf)
         self.loss = LabelSmoothingLoss(6, self.hparams.smoothing)
 
     def forward(self, x):
@@ -60,26 +63,29 @@ class Baseline(pl.LightningModule):
 
     def prepare_data(self):
         "Prepare supervised and unsupervised datasets from cifar"
-        n = self.hparams.randaug_n
-        m = self.hparams.randaug_m
-        train_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
-        valid_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
+        dataset_path = self.hparams.dataset_path
+        n_labeled = self.hparams.n_labeled
+        n_overlap = self.hparams.n_overlap
+        seed = self.hparams.seed
 
-        train = CIFAR10(self.hparams.data_path, True, download=True)
-        valid = CIFAR10(self.hparams.data_path, False)
+        if self.hparams.dataset == "cifar":
+            n = self.hparams.randaug_n
+            m = self.hparams.randaug_m
+            train_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
+            valid_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
+            sup_ds, unsup_ds = Cifar.uda_ds(dataset_path, n_labeled, n_overlap, train_tfm, seed=seed)
+            val_ds = Cifar.val_ds(dataset_path, valid_tfm)
 
-        seed_all(self.hparams.seed)
-        train_ds_l, train_ds_u, valid_ds = split_cifar(
-            train, valid,
-            n_labeled=self.hparams.n_labeled,
-            n_overlap=self.hparams.n_overlap,
-            labeled_tfm=train_tfm,
-            unlabeled_tfm=train_tfm,
-            valid_tfm=valid_tfm
-        )
+        if self.hparams.dataset == "quickdraw":
+            train_tfm = Compose([RandomCrop(128, 18), RandomHorizontalFlip(), RandomRotation(15), ToTensor()])
+            valid_tfm = ToTensor()
+            sup_ds, unsup_ds = QuickDraw.uda_ds(dataset_path, n_labeled, n_overlap, train_tfm, seed=seed)
+            val_ds = QuickDraw.val_ds(dataset_path, valid_tfm)
 
-        self.train_ds = train_ds_l
-        self.valid_ds = valid_ds
+        self.train_ds = sup_ds
+        self.valid_ds = val_ds
+        print(f"Loaded {len(self.train_ds)} train examples and {len(self.valid_ds)} validation examples")
+
 
     def train_dataloader(self):
         train_loader = DataLoader(self.train_ds, batch_size=self.hparams.batch_size, shuffle=True, drop_last=True, num_workers=os.cpu_count())
@@ -91,7 +97,7 @@ class Baseline(pl.LightningModule):
         return DataLoader(self.valid_ds, batch_size=self.hparams.batch_size*2, shuffle=False, drop_last=False, num_workers=os.cpu_count())
 
 
-@config(config_path="conf/baseline.yaml")
+@config(config_path="conf/baseline_cifar.yaml")
 def train(hparams):
     print(hparams.pretty())
 

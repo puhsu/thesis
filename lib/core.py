@@ -79,11 +79,12 @@ def config(config_path):
 
     parser = argparse.ArgumentParser(add_help=False, description="Trainer launcher")
     parser.add_argument("--help", "-h", action="store_true", help="Script help")
+    parser.add_argument("--config", type=str, default=config_path)
     parser.add_argument("overrides", nargs="*")
 
     args = parser.parse_args()
 
-    with open(config_path) as f:
+    with open(args.config) as f:
         cfg = omegaconf.DictConfig(yaml.safe_load(f))
 
     if args.help:

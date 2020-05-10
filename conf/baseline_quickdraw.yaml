@@ -1,4 +1,4 @@
-name: baseline
+name: baseline_quickdraw
 project: sssupervised
 version: null
 offline: false
@@ -7,17 +7,17 @@ seed: 69
 checkpoint_period: 50
 lr_find: false
 
-data_path: data
-n_labeled: 400
-n_overlap: 4
+dataset: quickdraw
+dataset_path: data
+n_labeled: 1000
+n_overlap: 10
 
 width: 2
 lr: 0.01
 wd: 0.0005
 smoothing: 0.0
-batch_size: 128
-randaug_n: 3
-randaug_m: 9
+batch_size: 64
+
 
 trainer:
   gpus: 1

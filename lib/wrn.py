@@ -61,13 +61,13 @@ class BasicBlock(nn.Module):
 
 
 class WideResNet(nn.Module):
-    def __init__(self, num_groups, N, num_classes, k=1, drop_p=0.0, start_nf=16):
+    def __init__(self, num_groups, N, num_classes, k=1, drop_p=0.0, start_nf=16, inp_nf=3):
         super().__init__()
         n_channels = [start_nf]
         for i in range(num_groups):
             n_channels.append(start_nf*(2**i)*k)
 
-        layers = [conv_2d(3, n_channels[0], 3, 1)]
+        layers = [conv_2d(inp_nf, n_channels[0], 3, 1)]
         for i in range(num_groups):
             layers += make_group(N, n_channels[i], n_channels[i+1], BasicBlock, (1 if i==0 else 2), drop_p)
 

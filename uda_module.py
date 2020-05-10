@@ -9,7 +9,7 @@ import wandb
 
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
-from torchvision.transforms import Compose, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip
+from torchvision.transforms import Compose, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomErasing, RandomAffine
 
 from lib.wrn import WideResNet
 from lib.randaugment import RandAugment
@@ -102,34 +102,37 @@ class UDA(pl.LightningModule):
 
     def prepare_data(self):
         "Prepare supervised and unsupervised datasets from cifar"
-        n = self.hparams.randaug_n
-        m = self.hparams.randaug_m
+        dataset_path = self.hparams.dataset_path
+        n_labeled = self.hparams.n_labeled
+        n_overlap = self.hparams.n_overlap
+        seed = self.hparams.seed
 
-        strong_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
-        weak_tfm = Compose([RandomCrop(32, 4, padding_mode="reflect"), RandomHorizontalFlip(), ToTensor(), Normalize(*CIFAR_STATS)])
-        valid_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
+        if self.hparams.dataset == "cifar":
+            n = self.hparams.randaug_n
+            m = self.hparams.randaug_m
 
-        train = CIFAR10(self.hparams.data_path, True, download=True)
-        valid = CIFAR10(self.hparams.data_path, False)
+            uda_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
+            sup_tfm = Compose([RandomCrop(32, 4, padding_mode="reflect"), RandomHorizontalFlip(), ToTensor(), Normalize(*CIFAR_STATS)])
+            val_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
+            sup_ds, unsup_ds = Cifar.uda_ds(dataset_path, n_labeled, n_overlap, sup_tfm, uda_tfm, seed=seed)
+            val_ds = Cifar.val_ds(dataset_path, val_tfm)
 
-        seed_all(self.hparams.seed)
-        train_ds_l, train_ds_u, valid_ds = split_cifar(
-            train, valid,
-            n_labeled=self.hparams.n_labeled,
-            n_overlap=self.hparams.n_overlap,
-            labeled_tfm=weak_tfm,
-            unlabeled_tfm=strong_tfm,
-            valid_tfm=valid_tfm
-        )
+        if self.hparams.dataset == "quickdraw":
+            uda_tfm = Compose([RandomAffine(75, 0.3, scale=(0.5, 2), shear=20), RandomErasing()])
+            sup_tfm = Compose([RandomCrop(128, 18), RandomHorizontalFlip(), RandomRotation(15), ToTensor()])
+            val_tfm = ToTensor()
+            sup_ds, unsup_ds = QuickDraw.uda_ds(dataset_path, n_labeled, n_overlap, sup_tfm, uda_tfm, seed=seed)
+            val_ds = QuickDraw.val_ds(dataset_path, val_tfm)
 
-        self.train_ds_l = train_ds_l
-        self.train_ds_u = train_ds_u
-        self.valid_ds = valid_ds
+        self.train_ds_sup = sup_ds
+        self.train_ds_unsup = unsup_ds
+        self.valid_ds = val_ds
 
     def train_dataloader(self):
-        train_loader_l = DataLoader(self.train_ds_l, batch_size=self.hparams.batch_size_l, shuffle=True, drop_last=True, num_workers=os.cpu_count())
-        train_loader_u = DataLoader(self.train_ds_u, batch_size=self.hparams.batch_size_u, shuffle=True, drop_last=True, num_workers=os.cpu_count())
-        train_loader = ConcatDataLoader(train_loader_l, train_loader_u)
+        train_loader_sup = DataLoader(self.train_ds_sup, batch_size=self.hparams.batch_size_l, shuffle=True, drop_last=True, num_workers=os.cpu_count())
+        train_loader_unsup = DataLoader(self.train_ds_unsup, batch_size=self.hparams.batch_size_u, shuffle=True, drop_last=True, num_workers=os.cpu_count())
+        train_loader = ConcatDataLoader(train_loader_sup, train_loader_unsup)
+
         # NOTE trainer uses min(max_epochs, max_steps) to stop, we don't want that
         if not self.hparams.lr_find:
             self.trainer.max_epochs = self.trainer.max_steps // len(train_loader)
