@@ -146,6 +146,8 @@ class QuickDraw(Dataset):
         if (path/"quickdraw").exists():
             print("Already downloaded")
             return
+        else:
+            path.mkdir(exist_ok=True, parents=True)
 
         URL = "https://docs.google.com/uc?export=download"
 
