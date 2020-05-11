@@ -8,7 +8,7 @@ import torchvision
 import wandb
 
 from torch.utils.data import DataLoader
-from torchvision.transforms import Compose, Resize, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomErasing, RandomAffine
+from torchvision.transforms import Compose, Resize, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomRotation
 
 from lib.wrn import WideResNet
 from lib.randaugment import RandAugment
@@ -23,7 +23,10 @@ class UDA(pl.LightningModule):
         self.hparams = hparams
 
         seed_all(self.hparams.seed)
-        self.model = WideResNet(num_groups=3, N=4, num_classes=6, k=self.hparams.width)
+        inp_nf = 3 if self.hparams.dataset == "cifar" else 1
+        n_classes = 6 if self.hparams.dataset == "cifar" else 10
+
+        self.model = WideResNet(num_groups=3, N=4, num_classes=n_classes, k=self.hparams.width, inp_nf=inp_nf)
         self.xent = nn.CrossEntropyLoss(reduction="none")
 
     def forward(self, x):
@@ -52,7 +55,7 @@ class UDA(pl.LightningModule):
 
         u_loss = F.kl_div(F.log_softmax(aug_logits, dim=-1), ori_prob, reduction="none").sum(dim=-1)
         u_mask = (ori_max_prob > self.hparams.uda_confidence_threshold).float()
-        u_loss = (u_loss * u_mask).sum() / u_mask.sum()
+        u_loss = (u_loss * u_mask).sum() / (u_mask.sum() + 1e-6)
 
         if self.hparams.uda_tsa:
             # anneal supervised loss
