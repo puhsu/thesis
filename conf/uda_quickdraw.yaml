@@ -7,7 +7,7 @@ lr_find: false
 checkpoint_period: 20
 seed: 69
 
-dataset: cifar
+dataset: quickdraw
 dataset_path: data
 n_labeled: 400
 n_overlap: 4

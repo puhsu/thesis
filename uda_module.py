@@ -8,8 +8,7 @@ import torchvision
 import wandb
 
 from torch.utils.data import DataLoader
-from torchvision.datasets import CIFAR10
-from torchvision.transforms import Compose, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomErasing, RandomAffine
+from torchvision.transforms import Compose, Resize, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomErasing, RandomAffine
 
 from lib.wrn import WideResNet
 from lib.randaugment import RandAugment
@@ -118,8 +117,8 @@ class UDA(pl.LightningModule):
             val_ds = Cifar.val_ds(dataset_path, val_tfm)
 
         if self.hparams.dataset == "quickdraw":
-            uda_tfm = Compose([RandomAffine(75, 0.3, scale=(0.5, 2), shear=20), RandomErasing()])
-            sup_tfm = Compose([RandomCrop(128, 18), RandomHorizontalFlip(), RandomRotation(15), ToTensor()])
+            uda_tfm = Compose([Resize(32, Image.NEAREST), SketchDeformation, RandomHorizontalFlip(), RandomRotation(30), RandomCrop(32, 10), ToTensor()])
+            sup_tfm = Compose([Resize(32, Image.NEAREST), RandomCrop(32, 5), RandomHorizontalFlip(), ToTensor()])
             val_tfm = ToTensor()
             sup_ds, unsup_ds = QuickDraw.uda_ds(dataset_path, n_labeled, n_overlap, sup_tfm, uda_tfm, seed=seed)
             val_ds = QuickDraw.val_ds(dataset_path, val_tfm)
