@@ -73,29 +73,18 @@ def plot_lr_find(results):
     plt.legend()
     plt.show()
 
-def in_ipynb():
-    try:
-        cfg = get_ipython().config
-        if cfg['IPKernelApp']['parent_appname'] == 'ipython-notebook':
-            return True
-        else:
-            return False
-    except NameError:
-        return False
 
 def config(config_path):
     "Configuration decorator, combines argparse with yaml config"
 
-    if not in_ipynb():
-        parser = argparse.ArgumentParser(add_help=False, description="Trainer launcher")
-        parser.add_argument("--help", "-h", action="store_true", help="Script help")
-        parser.add_argument("--config", type=str, default=config_path)
-        parser.add_argument("overrides", nargs="*")
+    parser = argparse.ArgumentParser(add_help=False, description="Trainer launcher")
+    parser.add_argument("--help", "-h", action="store_true", help="Script help")
+    parser.add_argument("--config", type=str, default=config_path)
+    parser.add_argument("overrides", nargs="*")
 
-        args = parser.parse_args()
-        config_path = args.config
+    args = parser.parse_args()
 
-    with open(config_path) as f:
+    with open(args.config) as f:
         cfg = omegaconf.DictConfig(yaml.safe_load(f))
 
     if args.help:

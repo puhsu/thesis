@@ -11,6 +11,7 @@ from torchvision.transforms import Compose, Normalize, ToTensor, RandomCrop, Ran
 
 from lib.wrn import WideResNet
 from lib.randaugment import RandAugment
+from lib.sketchaug import SketchDeformation
 from lib.data import Cifar, QuickDraw
 from lib.core import *
 
@@ -77,7 +78,7 @@ class Baseline(pl.LightningModule):
             val_ds = Cifar.val_ds(dataset_path, valid_tfm)
 
         if self.hparams.dataset == "quickdraw":
-            train_tfm = Compose([RandomCrop(128, 18), RandomHorizontalFlip(), RandomRotation(15), ToTensor()])
+            train_tfm = Compose([SketchDeformation, RandomHorizontalFlip(), RandomRotation(30), RandomCrop(128, 18), ToTensor()])
             valid_tfm = ToTensor()
             sup_ds, unsup_ds = QuickDraw.uda_ds(dataset_path, n_labeled, n_overlap, train_tfm, seed=seed)
             val_ds = QuickDraw.val_ds(dataset_path, valid_tfm)
@@ -90,7 +91,8 @@ class Baseline(pl.LightningModule):
     def train_dataloader(self):
         train_loader = DataLoader(self.train_ds, batch_size=self.hparams.batch_size, shuffle=True, drop_last=True, num_workers=os.cpu_count())
         # NOTE trainer uses min(max_epochs, max_steps) to stop, we don't want that
-        self.trainer.max_epochs = self.trainer.max_steps // len(train_loader)
+        if not self.hparams.lr_find:
+            self.trainer.max_epochs = self.trainer.max_steps // len(train_loader)
         return train_loader
 
     def val_dataloader(self):
