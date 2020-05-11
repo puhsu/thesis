@@ -9,11 +9,11 @@ lr_find: false
 
 dataset: quickdraw
 dataset_path: data
-n_labeled: 1000
+n_labeled: 100
 n_overlap: 10
 
 width: 2
-lr: 0.01
+lr: 0.02
 wd: 0.0005
 smoothing: 0.0
 batch_size: 64
