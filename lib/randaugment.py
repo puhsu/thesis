@@ -5,8 +5,7 @@ import cv2
 import numpy as np
 
 from PIL import ImageOps, ImageEnhance, ImageFilter, Image
-from albumentations import CoarseDropout
-from albumentations.augmentations.functional import shift_scale_rotate
+
 
 PARAMETER_MAX=10
 
@@ -34,31 +33,67 @@ def flip_ud(img, level):
     "Up down flip"
     return img.transpose(Image.FLIP_TOP_BOTTOM)
 
+def shift_scale_rotate(img, angle, scale, dx, dy):
+    "Affine transformation"
+    img = np.array(img)
+    height, width = img.shape[:2]
+    center = (width / 2, height / 2)
+    matrix = cv2.getRotationMatrix2D(center, angle, scale)
+    matrix[0, 2] += dx * width
+    matrix[1, 2] += dy * height
+    return Image.fromarray(cv2.warpAffine(img, M=matrix, dsize=(width,height), borderMode=cv2.BORDER_REFLECT101))
+
 def rotate(img, level):
     "Rotate for 30 degrees max"
     degrees = int_parameter(level, 30)
     if random.random() < 0.5:
         degrees = -degrees
-    return Image.fromarray(shift_scale_rotate(np.array(img), degrees, 1.0, 0, 0))
+    return shift_scale_rotate(img, degrees, 1, 0, 0)
 
 def scale(img, level):
     "Scale image with level. Zoom in/out at random"
     v = float_parameter(level, 1.0)
     if random.random() < 0.5:
         v = -v * 0.4
-    return Image.fromarray(shift_scale_rotate(np.array(img), 0, v + 1.0, 0, 0))
+    return shift_scale_rotate(img, 0, v + 1.0, 0, 0)
 
 def shift(img, level):
     "Do shift with level strength in random directions"
     s = int_parameter(level, 10)
     do_x, do_y = random.choice([(0,1), (0,-1), (1,0), (-1,0), (1,1), (-1,1), (1,-1)])
-    return Image.fromarray(shift_scale_rotate(np.array(img), 0, 1.0, do_x * s, do_y * s))
+    return shift_scale_rotate(img, 0, 1.0, do_x * s, do_y * s)
+
+class Cutout:
+    "Cutout multiple holes"
+    def __init__(self, n_holes, height=8, width=8):
+        self.n_holes = n_holes
+        self.hole_height = height
+        self.hole_width  = width
+
+    def __call__(self, img):
+        img = np.array(img)
+        height, width = img.shape[:2]
+
+        holes = []
+
+        for i in range(self.n_holes):
+            y1 = random.randint(0, height - self.hole_height)
+            x1 = random.randint(0, width - self.hole_width)
+            y2 = y1 + self.hole_height
+            x2 = x1 + self.hole_width
+            holes.append((x1, y1, x2, y2))
+
+        img = img.copy()
+        for x1, y1, x2, y2 in holes:
+            img[y1:y2, x1:x2] = 0
+
+        return Image.fromarray(img)
 
 def cutout(img, level):
     "Cutout `level` blocks from image"
     level = int_parameter(level, 10)
-    aug = CoarseDropout(max_holes=level, always_apply=True)
-    return Image.fromarray(aug(image=np.array(img))["image"])
+    aug = Cutout(n_holes=level)
+    return aug(img)
 
 def find_coeffs(pa, pb):
     matrix = []
