@@ -2,6 +2,7 @@ import os
 
 import pytorch_lightning as pl
 import torch
+import torch.nn as nn
 import torchvision
 
 from torch.utils.data import DataLoader
