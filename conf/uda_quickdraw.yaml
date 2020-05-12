@@ -1,5 +1,6 @@
 name: uda_quickdraw
 project: sssupervised
+wandb: false
 version: null
 offline: false
 lr_find: false

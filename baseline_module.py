@@ -85,7 +85,7 @@ class Baseline(pl.LightningModule):
 
         self.train_ds = sup_ds
         self.valid_ds = val_ds
-        print(f"Loaded {len(self.train_ds)} train examples and {len(self.valid_ds)} validation examples")
+        print("Loaded {} train examples and {} validation examples".format(len(self.train_ds), len(self.valid_ds)))
 
 
     def train_dataloader(self):

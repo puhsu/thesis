@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-import wandb
 
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Resize, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomRotation
@@ -145,7 +144,7 @@ class UDA(pl.LightningModule):
         return DataLoader(self.valid_ds, batch_size=self.hparams.batch_size_l*2, shuffle=False, drop_last=False, num_workers=os.cpu_count())
 
 
-@config(config_path="conf/uda.yaml")
+@config(config_path="conf/uda_cifar.yaml")
 def train(hparams):
     print(hparams.pretty())
 
@@ -158,12 +157,26 @@ def train(hparams):
         plot_lr_find(lr_find.results)
         exit(0)
 
-    wandb_logger = pl.loggers.WandbLogger(name=hparams.name, project=hparams.project, version=hparams.version, offline=hparams.offline)
-    checkpoint_path = os.path.join(wandb_logger.experiment.dir, "checkpoints", "{epoch}-{val_acc:.2f}")
-    checkpoints = pl.callbacks.ModelCheckpoint(filepath=checkpoint_path, monitor="val_acc", period=hparams.checkpoint_period)
+    if hparams.wandb:
+        print("Using wandb logger")
+        import wandb
+        logger = pl.loggers.WandbLogger(name=hparams.name, project=hparams.project, version=hparams.version, offline=hparams.offline)
+        checkpoint_path = os.path.join(wandb_logger.experiment.dir, "checkpoints", "{epoch}-{val_acc:.2f}")
+        checkpoints = pl.callbacks.ModelCheckpoint(filepath=checkpoint_path, monitor="val_acc", period=hparams.trainer.check_val_every_n_epoch)
+    else:
+        from lib.checkpoint import ModelCheckpoint
+
+        print("Using tensorboard logger")
+        logger = pl.loggers.TensorBoardLogger(save_dir=os.environ["LOGS_PATH"], name=hparams.name)
+        checkpoint_path = os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint.pth")
+        checkpoints = ModelCheckpoint(checkpoint_path, monitor="val_acc", period=hparams.trainer.check_val_every_n_epoch)
+
+        if os.path.isfile(checkpoint_path):
+            print("Resuming from latest checkpoint")
+            hparams.trainer.resume_from_checkpoint = checkpoint_path
 
     model = UDA(hparams)
-    trainer = pl.Trainer(logger=wandb_logger, checkpoint_callback=checkpoints, **hparams.trainer)
+    trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **hparams.trainer)
     trainer.fit(model)
 
 if __name__ == "__main__":
