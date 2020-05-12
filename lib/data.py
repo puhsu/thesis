@@ -33,7 +33,7 @@ def get_image_files(path):
     path = Path(path)
     res = []
     for p,d,f in os.walk(path):
-        res += [p/f for f in f if f.endswith(".png")]
+        res += [Path(p)/f for f in f if f.endswith(".png")]
     return res
 
 
