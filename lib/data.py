@@ -7,6 +7,7 @@ import torchvision
 import requests
 import numpy as np
 import enum
+from pathlib import Path
 
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, ToTensor, Normalize
@@ -29,9 +30,10 @@ class Mode(enum.Enum):
 
 def get_image_files(path):
     "Recursively get all images from `path`"
+    path = Path(path)
     res = []
     for p,d,f in os.walk(path):
-        res += [os.path.join(p, f) for f in f if f.endswith(".png")]
+        res += [p/f for f in f if f.endswith(".png")]
     return res
 
 
@@ -75,6 +77,7 @@ class Cifar(Dataset):
 
     @classmethod
     def uda_ds(cls, path="data", n_labeled=400, n_overlap=4, sup_transform=None, uda_transform=None, seed=69):
+        path = Path(path)
         seed_all(seed)
         cifar = CIFAR10(path, train=True, download=True)
 
@@ -138,12 +141,12 @@ class QuickDraw(Dataset):
     @staticmethod
     def download(path, file_id="1urjhim8CmqgcyaJfHjO83VyzbBbRqIBA"):
         "Downloads prepared quickdraw dataset from google-drive"
-
-        if os.path.exists(os.path.join(path, "quickdraw")):
+        path = Path(path)
+        if (path/"quickdraw").exists():
             print("Already downloaded")
             return
         else:
-            os.makedirs(path, exist_ok=True)
+            path.mkdir(exist_ok=True, parents=True)
 
 
         URL = "https://docs.google.com/uc?export=download"
@@ -156,7 +159,7 @@ class QuickDraw(Dataset):
 
         def save_response_content(response):
             CHUNK_SIZE = 32768
-            with open(os.path.join(path, "quickdraw.tar.gz"), "wb") as f:
+            with open(path/"quickdraw.tar.gz", "wb") as f:
                 for chunk in tqdm(response.iter_content(CHUNK_SIZE)):
                     if chunk: # filter out keep-alive new chunks
                         f.write(chunk)
@@ -171,7 +174,7 @@ class QuickDraw(Dataset):
 
         save_response_content(response)
 
-        with tarfile.open(os.path.join(path, "quickdraw.tar.gz")) as tar:
+        with tarfile.open(path/"quickdraw.tar.gz") as tar:
             tar.extractall(path)
 
 
@@ -200,6 +203,7 @@ class QuickDraw(Dataset):
     @classmethod
     def uda_ds(cls, path="data", n_labeled=100, n_overlap=10, sup_transform=None, uda_transform=None, seed=69):
         "Creates labeled and unlabeled datasets for semi-supervised learning with uda"
+        path = Path(path)
         cls.download(path)
         seed_all(seed)
 
@@ -211,7 +215,7 @@ class QuickDraw(Dataset):
             list(np.random.choice(other_classes, size=10-n_overlap, replace=False))
         )
 
-        data = get_image_files(os.path.join(path, "quickdraw", "train"))
+        data = get_image_files(path/"quickdraw"/"train")
         counts = Counter()
 
         sup_data = []
@@ -235,10 +239,11 @@ class QuickDraw(Dataset):
     @classmethod
     def val_ds(cls, path="data", transform=None):
         "Creates validation dataset (only sup classes)"
+        path = Path(path)
         cls.download(path)
         sup_classes = cls.sup_classes
 
-        data = [f for f in get_image_files(os.path.join(path, "quickdraw", "valid")) if f.parent.name in sup_classes]
+        data = [f for f in get_image_files(path/"quickdraw"/"valid") if f.parent.name in sup_classes]
         targets = [cls.sup_classes.index(f.parent.name) for f in data]
 
         return cls(data, targets, transform, mode=Mode.SUP)
