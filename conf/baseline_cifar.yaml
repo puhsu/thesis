@@ -1,4 +1,4 @@
-name: baseline
+name: baseline_weak
 project: sssupervised
 version: null
 offline: false
@@ -9,6 +9,7 @@ lr_find: false
 
 dataset: cifar
 dataset_path: data
+strong_tfm: false
 n_labeled: 400
 n_overlap: 4
 

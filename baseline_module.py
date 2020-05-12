@@ -72,7 +72,10 @@ class Baseline(pl.LightningModule):
         if self.hparams.dataset == "cifar":
             n = self.hparams.randaug_n
             m = self.hparams.randaug_m
-            train_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
+            if self.hparams.strong_tfm:
+                train_tfm = Compose([RandAugment(n, m), ToTensor(), Normalize(*CIFAR_STATS)])
+            else:
+                train_tfm = Compose([RandomCrop(32, 4, padding_mode="reflect"), RandomHorizontalFlip(), ToTensor(), Normalize(*CIFAR_STATS)])
             valid_tfm = Compose([ToTensor(), Normalize(*CIFAR_STATS)])
             sup_ds, unsup_ds = Cifar.uda_ds(dataset_path, n_labeled, n_overlap, train_tfm, seed=seed)
             val_ds = Cifar.val_ds(dataset_path, valid_tfm)
@@ -108,17 +111,32 @@ def train(hparams):
         model = Baseline(hparams)
         trainer = pl.Trainer(**hparams.trainer)
 
-        lr_find = trainer.lr_find(model, max_lr=10)
+        lr_find = trainer.lr_find(model, min_lr=1e-7, max_lr=10)
         plot_lr_find(lr_find.results)
         exit(0)
 
-    wandb_logger = pl.loggers.WandbLogger(name=hparams.name, project=hparams.project, version=hparams.version, offline=hparams.offline)
-    checkpoint_path = os.path.join(wandb_logger.experiment.dir, "checkpoints", "{epoch}-{val_acc:.2f}")
-    checkpoints = pl.callbacks.ModelCheckpoint(filepath=checkpoint_path, monitor="val_acc", period=hparams.checkpoint_period)
+    if hparams.wandb:
+        print("Using wandb logger")
+        import wandb
+        logger = pl.loggers.WandbLogger(name=hparams.name, project=hparams.project, version=hparams.version, offline=hparams.offline)
+        checkpoint_path = os.path.join(wandb_logger.experiment.dir, "checkpoints", "{epoch}-{val_acc:.2f}")
+        checkpoints = pl.callbacks.ModelCheckpoint(filepath=checkpoint_path, monitor="val_acc", period=hparams.trainer.check_val_every_n_epoch)
+    else:
+        from lib.checkpoint import ModelCheckpoint
+
+        print("Using tensorboard logger")
+        logger = pl.loggers.TensorBoardLogger(save_dir=os.environ["LOGS_PATH"], name=hparams.name)
+        checkpoint_path = os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint.pth")
+        checkpoints = ModelCheckpoint(checkpoint_path, monitor="val_acc", period=hparams.trainer.check_val_every_n_epoch)
+
+        if os.path.isfile(checkpoint_path):
+            print("Resuming from latest checkpoint")
+            hparams.trainer.resume_from_checkpoint = checkpoint_path
 
     model = Baseline(hparams)
-    trainer = pl.Trainer(logger=wandb_logger, checkpoint_callback=checkpoints, **hparams.trainer)
+    trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **hparams.trainer)
     trainer.fit(model)
+    trainer.save_checkpoint(os.path.join(os.environ["SNAPSHOT_PATH"], "final.pth"))
 
 if __name__ == "__main__":
     train()
