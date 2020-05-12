@@ -26,7 +26,7 @@ class Baseline(pl.LightningModule):
         n_classes = 6 if self.hparams.dataset == "cifar" else 10
 
         self.model = WideResNet(num_groups=3, N=4, num_classes=n_classes, k=self.hparams.width, inp_nf=inp_nf)
-        self.loss = LabelSmoothingLoss(6, self.hparams.smoothing)
+        self.loss = nn.CrossEntropyLoss()
 
     def forward(self, x):
         return self.model(x)
