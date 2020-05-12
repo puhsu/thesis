@@ -177,6 +177,7 @@ def train(hparams):
     model = UDA(hparams)
     trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **hparams.trainer)
     trainer.fit(model)
+    trainer.save_checkpoint(os.path.join(os.environ["SNAPSHOT_PATH"], "final.pth"))
 
 if __name__ == "__main__":
     train()
