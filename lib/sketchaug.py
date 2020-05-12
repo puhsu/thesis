@@ -16,7 +16,7 @@ def dfx(x, lam, a, b):
 
 
 def deform_x(img_arr, lam, a, b):
-    height, width = img_arr.shape
+    height, width = img_arr.shape[:2]
     idxs = np.arange(width) / float(width - 1)
     new_idxs = get_new_idx(idxs, lam, a, b)
     new_idxs = np.floor(new_idxs * (width - 1)).astype(int)
@@ -33,7 +33,7 @@ def deform_x(img_arr, lam, a, b):
 
 
 def deform_y(img_arr, lam, a, b):
-    height, width = img_arr.shape
+    height, width = img_arr.shape[:2]
     idxs = np.arange(height) / float(height - 1)
     new_idxs = get_new_idx(idxs, lam, a, b)
     new_idxs = np.floor(new_idxs * (height - 1)).astype(int)
@@ -48,6 +48,13 @@ def deform_y(img_arr, lam, a, b):
         new_img[lost_idx] |= new_img[lost_idx - 1]
 
     return new_img
+
+
+def ExpandChannels(img):
+    img = np.array(img)
+    height, width = img.shape
+    img = np.array(img).repeat(3).reshape(height, width, 3)
+    return Image.fromarray(img)
 
 
 def SketchDeformation(img):

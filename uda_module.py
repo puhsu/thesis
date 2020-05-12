@@ -11,7 +11,7 @@ from torchvision.transforms import Compose, Resize, Normalize, ToTensor, RandomC
 
 from lib.wrn import WideResNet
 from lib.randaugment import RandAugment
-from lib.sketchaug import SketchDeformation
+from lib.sketchaug import SketchDeformation, ExpandChannels
 from lib.data import *
 from lib.core import *
 
@@ -22,10 +22,9 @@ class UDA(pl.LightningModule):
         self.hparams = hparams
 
         seed_all(self.hparams.seed)
-        inp_nf = 3 if self.hparams.dataset == "cifar" else 1
         n_classes = 6 if self.hparams.dataset == "cifar" else 10
 
-        self.model = WideResNet(num_groups=3, N=4, num_classes=n_classes, k=self.hparams.width, inp_nf=inp_nf)
+        self.model = WideResNet(num_groups=3, N=4, num_classes=n_classes, k=self.hparams.width)
         self.xent = nn.CrossEntropyLoss(reduction="none")
 
     def forward(self, x):
@@ -120,9 +119,9 @@ class UDA(pl.LightningModule):
             val_ds = Cifar.val_ds(dataset_path, val_tfm)
 
         if self.hparams.dataset == "quickdraw":
-            uda_tfm = Compose([SketchDeformation, RandomHorizontalFlip(), RandomRotation(30), RandomCrop(128, 18), ToTensor()])
-            sup_tfm = Compose([RandomCrop(128, 9), RandomHorizontalFlip(), ToTensor()])
-            val_tfm = ToTensor()
+            uda_tfm = Compose([ExpandChannels, SketchDeformation, RandomHorizontalFlip(), RandomRotation(30), RandomCrop(128, 18), ToTensor()])
+            sup_tfm = Compose([ExpandChannels, RandomCrop(128, 9), RandomHorizontalFlip(), ToTensor()])
+            val_tfm = Compose([ExpandChannels, ToTensor()])
             sup_ds, unsup_ds = QuickDraw.uda_ds(dataset_path, n_labeled, n_overlap, sup_tfm, uda_tfm, seed=seed)
             val_ds = QuickDraw.val_ds(dataset_path, val_tfm)
 
