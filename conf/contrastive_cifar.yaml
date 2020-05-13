@@ -1,0 +1,28 @@
+name: contrastive
+project: sssupervised
+version: null
+offline: false
+wandb: true
+lr_find: false
+
+checkpoint_period: 20
+seed: 69
+
+dataset: cifar
+dataset_path: data
+n_labeled: 400
+n_overlap: 4
+
+width: 2
+lr: 0.02
+wd: 0.0005
+batch_size: 128
+queue_size: 2048
+temperature: 0.3
+randaug_n: 3
+randaug_m: 9
+
+trainer:
+  gpus: 1
+  max_steps: 100000
+  check_val_every_n_epoch: 10

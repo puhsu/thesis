@@ -1,4 +1,4 @@
-__all__ = ["QuickDraw", "Cifar", "CIFAR_STATS", "ConcatDataLoader"]
+__all__ = ["QuickDraw", "Cifar", "CIFAR_STATS", "ConcatDataLoader", "Mode"]
 
 import os
 import tarfile
