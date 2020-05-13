@@ -1,11 +1,9 @@
-import copy
 import os
 
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
 
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Resize, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip, RandomRotation
@@ -17,23 +15,20 @@ from lib.data import *
 from lib.core import *
 
 
-def queue_data(data, k):
-    return torch.cat([data, k], dim=0)
+def momentum_update(model_q, model_k, m=0.999):
+    "model_k = m * model_k + (1 - m) model_q"
+    for p1, p2 in zip(model_q.parameters(), model_k.parameters()):
+        p2.data.mul_(m).add_(1 - m, p1.detach().data)
 
-def dequeue_data(data, K=4096):
-    if len(data) > K:
-        return data[-K:]
+def enqueue(queue, k):
+    return torch.cat([queue, k], dim=0)
+
+
+def dequeue(queue, max_len):
+    if queue.shape[0] >= max_len:
+        return queue[-max_len:]  # queue follows FIFO
     else:
-        return data
-
-def momentum_update(model_q, model_k, beta=0.999):
-    param_k = model_k.state_dict()
-    param_q = model_q.named_parameters()
-    for n, q in param_q:
-        if n in param_k:
-            param_k[n].data.copy_(beta*param_k[n].data + (1-beta)*q.data)
-    model_k.load_state_dict(param_k)
-
+        return queue
 
 class MomentumContrast(pl.LightningModule):
     def __init__(self, hparams):
@@ -41,18 +36,15 @@ class MomentumContrast(pl.LightningModule):
         self.hparams = hparams
         seed_all(self.hparams.seed)
         self.model_q = WideResNet(num_groups=3, N=4, k=self.hparams.width)
-
+        self.model_k = WideResNet(num_groups=3, N=4, k=self.hparams.width)
+        momentum_update(self.model_q, self.model_k, 0)
+        for param in self.model_k.parameters():
+            param.requires_grad = False
+        self.xent = nn.CrossEntropyLoss()
+        self.register_buffer("queue", torch.randn(100, 128, requires_grad=False))
 
     def forward(self, x):
         return self.model_q(x)
-
-    def on_train_start(self):
-        "Initialize queue and momentum encoder"
-        device = next(self.model_q.parameters()).device
-        print(device)
-        self.model_k = copy.deepcopy(self.model_q)
-        self.queue = torch.randn(self.hparams.queue_size, 128, device=device)
-        self.xent = nn.CrossEntropyLoss()
 
     def training_step(self, batch, batch_n):
         "Momentum contrast"
@@ -63,24 +55,23 @@ class MomentumContrast(pl.LightningModule):
         q = self.model_q(x_q)
         q = F.normalize(q, p=2)
 
-        with torch.no_grad():
-            momentum_update(self.model_q, self.model_k)
-            k = self.model_k(x_k)
-            k = F.normalize(k, p=2)
+        momentum_update(self.model_q, self.model_k)
+        k = self.model_k(x_k).detach()
+        k = F.normalize(k, p=2)
 
         pos = torch.bmm(q.view(bs, 1, -1), k.view(bs, -1, 1)).view(bs, -1)
         neg = torch.mm(q, self.queue.T)
 
-        logits = torch.cat([pos, neg], dim=-1)
+        logits = torch.cat([pos, neg], dim=-1) / self.hparams.temperature
         labels = torch.zeros(bs, device=logits.device, dtype=torch.long)   # positive pair goes first
-        loss = self.xent(logits / self.hparams.temperature, labels)
+        loss = self.xent(logits, labels)
+        pred = logits[:, 0].mean()
 
         lr, mom = extract_opt_stats(self.trainer)
-        log = {"train_loss": loss, "lr": lr, "mom": mom}
+        log = {"train_loss": loss, "train_pred": pred,  "lr": lr, "mom": mom}
 
-        with torch.no_grad():
-            self.queue = queue_data(self.queue, k)
-            self.queue = dequeue_data(self.queue, K=self.hparams.queue_size)
+        self.queue = enqueue(self.queue, k)
+        self.queue = dequeue(self.queue, max_len=self.hparams.queue_size)
 
         return {"loss": loss, "log": log}
 
@@ -131,8 +122,8 @@ class MomentumContrast(pl.LightningModule):
 
             sup_ds, unsup_ds = Cifar.uda_ds(dataset_path, n_labeled, n_overlap, seed=seed)
             val_ds = Cifar.val_ds(dataset_path, val_tfm)
-            val_ds = Cifar(val_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
             train_ds = Cifar(sup_ds.data + unsup_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
+            val_ds = Cifar(val_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
 
         if self.hparams.dataset == "quickdraw":
             train_tfm = Compose([ExpandChannels, SketchDeformation, RandomHorizontalFlip(), RandomRotation(30), RandomCrop(128, 18), ToTensor()])
@@ -143,6 +134,7 @@ class MomentumContrast(pl.LightningModule):
             val_ds = QuickDraw.val_ds(dataset_path, val_tfm)
             val_ds = QuickDraw(val_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
 
+        print("Loaded train_ds of size", len(train_ds))
         self.train_ds = train_ds
         self.valid_ds = val_ds
 
@@ -166,7 +158,7 @@ def train(hparams):
         model = MomentumContrast(hparams)
         trainer = pl.Trainer(**hparams.trainer)
 
-        lr_find = trainer.lr_find(model, min_lr=1e-7, max_lr=10)
+        lr_find = trainer.lr_find(model, min_lr=1e-7, max_lr=100, num_training=1000)
         plot_lr_find(lr_find.results)
         exit(0)
 
@@ -174,7 +166,7 @@ def train(hparams):
         print("Using wandb logger")
         import wandb
         logger = pl.loggers.WandbLogger(name=hparams.name, project=hparams.project, version=hparams.version, offline=hparams.offline)
-        checkpoint_path = os.path.join(wandb_logger.experiment.dir, "checkpoints", "{epoch}-{val_acc:.2f}")
+        checkpoint_path = os.path.join(logger.experiment.dir, "checkpoints", "{epoch}-{val_acc:.2f}")
         checkpoints = pl.callbacks.ModelCheckpoint(filepath=checkpoint_path, monitor="val_loss", period=hparams.trainer.check_val_every_n_epoch)
     else:
         from lib.checkpoint import ModelCheckpoint
