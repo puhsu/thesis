@@ -163,7 +163,7 @@ def train(hparams):
 
     if hparams.lr_find:
         print("Running lr finder")
-        model = UDA(hparams)
+        model = MomentumContrast(hparams)
         trainer = pl.Trainer(**hparams.trainer)
 
         lr_find = trainer.lr_find(model, min_lr=1e-7, max_lr=10)
