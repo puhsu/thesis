@@ -158,7 +158,7 @@ def train(hparams):
         model = MomentumContrast(hparams)
         trainer = pl.Trainer(**hparams.trainer)
 
-        lr_find = trainer.lr_find(model, min_lr=1e-7, max_lr=100, num_training=1000)
+        lr_find = trainer.lr_find(model, min_lr=1e-7, max_lr=10, num_training=500)
         plot_lr_find(lr_find.results)
         exit(0)
 
@@ -176,14 +176,14 @@ def train(hparams):
         checkpoint_path = os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint")
         checkpoints = ModelCheckpoint(checkpoint_path, monitor="val_loss", period=hparams.trainer.check_val_every_n_epoch)
 
-        if os.path.isfile(checkpoint_path):
+        if os.path.isfile(checkpoint_path + ".ckpt"):
             print("Resuming from latest checkpoint")
             hparams.trainer.resume_from_checkpoint = checkpoint_path + ".ckpt"
 
     model = MomentumContrast(hparams)
     trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **hparams.trainer)
     trainer.fit(model)
-    trainer.save_checkpoint(os.path.join(os.environ["SNAPSHOT_PATH"], "final.ckpt"))
+    trainer.save_checkpoint(os.path.join(os.environ.get("SNAPSHOT_PATH", "."), "final.ckpt"))
 
 if __name__ == "__main__":
     train()

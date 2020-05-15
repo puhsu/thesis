@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 def weight_init(m):
-    if isinstance(m, nn.BatchNorm2d):
+    if isinstance(m, nn.GroupNorm):
         return
 
     if hasattr(m, 'weight'):
@@ -22,7 +22,7 @@ def conv_2d(ni, nf, ks, stride):
     return nn.Conv2d(ni, nf, kernel_size=ks, stride=stride, padding=ks//2, bias=False)
 
 def bn(ni, init_zero=False):
-    m = nn.BatchNorm2d(ni)
+    m = nn.GroupNorm(ni//16, ni)
     m.weight.data.fill_(0 if init_zero else 1)
     m.bias.data.zero_()
     return m
@@ -46,7 +46,7 @@ class Flatten(nn.Module):
 class BasicBlock(nn.Module):
     def __init__(self, ni, nf, stride, drop_p=0.0):
         super().__init__()
-        self.bn = nn.BatchNorm2d(ni)
+        self.bn = nn.GroupNorm(ni//16, ni)
         self.conv1 = conv_2d(ni, nf, 3, stride)
         self.conv2 = bn_relu_conv(nf, nf, 3, 1)
         self.drop = nn.Dropout(drop_p, inplace=True) if drop_p else None

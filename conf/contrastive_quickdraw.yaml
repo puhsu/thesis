@@ -1,4 +1,4 @@
-name: contrastive_pretrain
+name: contrastive_qd
 project: contrastive
 version: null
 offline: false
@@ -8,10 +8,10 @@ lr_find: false
 checkpoint_period: 10
 seed: 69
 
-dataset: cifar
+dataset: quickdraw
 dataset_path: data
-n_labeled: 400
-n_overlap: 4
+n_labeled: 100
+n_overlap: 10
 
 width: 2
 lr: 0.005
@@ -19,10 +19,8 @@ wd: 0.0005
 batch_size: 256
 queue_size: 4096
 temperature: 0.5
-randaug_n: 3
-randaug_m: 9
 
 trainer:
   gpus: 1
-  max_steps: 200000
+  max_steps: 50000
   check_val_every_n_epoch: 10
