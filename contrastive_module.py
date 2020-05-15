@@ -41,7 +41,10 @@ class MomentumContrast(pl.LightningModule):
         for param in self.model_k.parameters():
             param.requires_grad = False
         self.xent = nn.CrossEntropyLoss()
-        self.register_buffer("queue", torch.randn(100, 128, requires_grad=False))
+        if hparams.trainer.resume_from_checkpoint is not None:
+            self.register_buffer("queue", torch.randn(hparams.queue_size, 128, requires_grad=False))
+        else:
+            self.register_buffer("queue", torch.randn(100, 128, requires_grad=False))
 
     def forward(self, x):
         return self.model_q(x)

@@ -182,7 +182,7 @@ class ModelCheckpoint(Callback):
 
         if len(groups) == 0:
             # default name
-            filename = "checkpoint.pth"
+            filename = "checkpoint"
         else:
             metrics['epoch'] = epoch
             filename = self.filename
@@ -192,8 +192,8 @@ class ModelCheckpoint(Callback):
                 if name not in metrics:
                     metrics[name] = 0
             filename = filename.format(**metrics)
-        str_ver = f'_v{ver}' if ver is not None else ''
-        filepath = os.path.join(self.dirpath, self.prefix + filename + str_ver + '.ckpt')
+
+        filepath = os.path.join(self.dirpath, self.prefix + filename + '.ckpt')
         return filepath
 
     @rank_zero_only
