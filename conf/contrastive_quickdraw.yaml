@@ -5,7 +5,7 @@ offline: false
 wandb: false
 lr_find: false
 
-checkpoint_period: 10
+checkpoint_period: 1
 seed: 69
 
 dataset: quickdraw
@@ -22,5 +22,5 @@ temperature: 0.5
 
 trainer:
   gpus: 1
-  max_steps: 50000
-  check_val_every_n_epoch: 10
+  max_steps: 60000
+  check_val_every_n_epoch: 1
