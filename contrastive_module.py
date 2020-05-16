@@ -178,7 +178,8 @@ def train(hparams):
 
         print("Using tensorboard logger")
         logger = pl.loggers.TensorBoardLogger(save_dir=os.environ["LOGS_PATH"], name=hparams.name)
-        if os.path.isfile(os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint.ckpt")):
+        checkpoint_path = os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint.ckpt")
+        if os.path.isfile(checkpoint_path):
             print("Resuming from latest checkpoint")
             hparams.trainer.resume_from_checkpoint = checkpoint_path
 
