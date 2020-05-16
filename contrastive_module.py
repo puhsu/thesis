@@ -151,6 +151,8 @@ class MomentumContrast(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(self.valid_ds, batch_size=self.hparams.batch_size*2, shuffle=False, drop_last=False, num_workers=os.cpu_count())
 
+    def on_epoch_end(self):
+        self.trainer.save_checkpoint(os.path.join(os.environ.get("SNAPSHOT_PATH"), "checkpoint.ckpt"))
 
 @config(config_path="conf/contrastive_cifar.yaml")
 def train(hparams):
@@ -176,15 +178,12 @@ def train(hparams):
 
         print("Using tensorboard logger")
         logger = pl.loggers.TensorBoardLogger(save_dir=os.environ["LOGS_PATH"], name=hparams.name)
-        checkpoint_path = os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint")
-        checkpoints = ModelCheckpoint(checkpoint_path, monitor="val_loss", period=hparams.trainer.check_val_every_n_epoch)
-
-        if os.path.isfile(checkpoint_path + ".ckpt"):
+        if os.path.isfile(os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint.ckpt")):
             print("Resuming from latest checkpoint")
-            hparams.trainer.resume_from_checkpoint = checkpoint_path + ".ckpt"
+            hparams.trainer.resume_from_checkpoint = checkpoint_path
 
     model = MomentumContrast(hparams)
-    trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **hparams.trainer)
+    trainer = pl.Trainer(logger=logger, **hparams.trainer)
     trainer.fit(model)
     trainer.save_checkpoint(os.path.join(os.environ.get("SNAPSHOT_PATH", "."), "final.ckpt"))
 
