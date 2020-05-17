@@ -125,7 +125,7 @@ class MomentumContrast(pl.LightningModule):
 
             sup_ds, unsup_ds = Cifar.uda_ds(dataset_path, n_labeled, n_overlap, seed=seed)
             val_ds = Cifar.val_ds(dataset_path, val_tfm)
-            train_ds = Cifar(sup_ds.data + unsup_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
+            train_ds = Cifar(unsup_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
             val_ds = Cifar(val_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
 
         if self.hparams.dataset == "quickdraw":
@@ -133,7 +133,7 @@ class MomentumContrast(pl.LightningModule):
             val_tfm   = Compose([ExpandChannels, ToTensor()])
 
             sup_ds, unsup_ds = QuickDraw.uda_ds(dataset_path, n_labeled, n_overlap, seed=seed)
-            train_ds = QuickDraw(sup_ds.data + unsup_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
+            train_ds = QuickDraw(unsup_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
             val_ds = QuickDraw.val_ds(dataset_path, val_tfm)
             val_ds = QuickDraw(val_ds.data, transform0=train_tfm, transform1=train_tfm, mode=Mode.UNSUP)
 
