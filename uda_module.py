@@ -142,6 +142,9 @@ class UDA(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(self.valid_ds, batch_size=self.hparams.batch_size_l*2, shuffle=False, drop_last=False, num_workers=os.cpu_count())
 
+    def on_epoch_end(self):
+         if not self.hparams.lr_find:
+            self.trainer.save_checkpoint(os.path.join(os.environ.get("SNAPSHOT_PATH", "."), "checkpoint.ckpt"))
 
 @config(config_path="conf/uda_cifar.yaml")
 def train(hparams):
@@ -167,15 +170,14 @@ def train(hparams):
 
         print("Using tensorboard logger")
         logger = pl.loggers.TensorBoardLogger(save_dir=os.environ["LOGS_PATH"], name=hparams.name)
-        checkpoint_path = os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint.pth")
-        checkpoints = ModelCheckpoint(checkpoint_path, monitor="val_acc", period=hparams.trainer.check_val_every_n_epoch)
+        checkpoint_path = os.path.join(os.environ["SNAPSHOT_PATH"], "checkpoint.ckpt")
 
         if os.path.isfile(checkpoint_path):
             print("Resuming from latest checkpoint")
             hparams.trainer.resume_from_checkpoint = checkpoint_path
 
     model = UDA(hparams)
-    trainer = pl.Trainer(logger=logger, checkpoint_callback=checkpoints, **hparams.trainer)
+    trainer = pl.Trainer(logger=logger, **hparams.trainer)
     trainer.fit(model)
     trainer.save_checkpoint(os.path.join(os.environ["SNAPSHOT_PATH"], "final.pth"))
 
