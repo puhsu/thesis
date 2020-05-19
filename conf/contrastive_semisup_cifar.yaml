@@ -1,0 +1,29 @@
+name: contrastive_pretrain
+project: contrastive
+version: null
+offline: false
+wandb: false
+lr_find: false
+
+checkpoint_period: 10
+seed: 69
+
+dataset: cifar
+dataset_path: data
+n_labeled: 400
+n_overlap: 4
+
+width: 2
+lr: 0.005
+wd: 0.0005
+batch_size_u: 256
+batch_size_l: 64
+queue_size: 4096
+temperature: 0.5
+randaug_n: 3
+randaug_m: 9
+
+trainer:
+  gpus: 1
+  max_steps: 300000
+  check_val_every_n_epoch: 10
